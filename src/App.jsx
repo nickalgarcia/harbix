@@ -1,4 +1,13 @@
 import { useState, useRef, useEffect } from "react";
+import {
+  signInWithPopup, signOut, onAuthStateChanged
+} from "firebase/auth";
+import {
+  collection, addDoc, updateDoc, doc,
+  onSnapshot, query, orderBy, serverTimestamp
+} from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { auth, db, storage, googleProvider } from "./firebase";
 
 // ── Brand ─────────────────────────────────────────────────────
 const B = {
@@ -30,46 +39,51 @@ const B = {
 };
 
 const STATUS = {
-  waiting:  { label: "Waiting",  bg: B.amberBg,  text: B.amberText, dot: B.amber },
-  "on-it":  { label: "On It",    bg: B.blueBg,   text: B.blueText,  dot: B.blue  },
-  done:     { label: "Done",     bg: B.greenBg,  text: B.greenText, dot: B.green },
-  closed:   { label: "Closed",   bg: B.cream,    text: B.muted,     dot: B.muted },
+  waiting:   { label: "Waiting",  bg: B.amberBg,  text: B.amberText, dot: B.amber },
+  "on-it":   { label: "On It",    bg: B.blueBg,   text: B.blueText,  dot: B.blue  },
+  done:      { label: "Done",     bg: B.greenBg,  text: B.greenText, dot: B.green },
+  closed:    { label: "Closed",   bg: B.cream,    text: B.muted,     dot: B.muted },
 };
 
-const MOCK_AGENTS = [
-  { id: "a1", name: "Nick Garcia",   email: "nick@godchasers.church",  avatar: "NG" },
-  { id: "a2", name: "Pastor Donte",  email: "pd@godchasers.church",    avatar: "PD" },
-  { id: "a3", name: "James Okafor",  email: "james@godchasers.church", avatar: "JO" },
-];
-
-const MOCK_TICKETS = [
-  { id:"t1", name:"Lisa Tran",        contact:"lisa@gcc.org",         location:"Main Sanctuary", issue:"Wireless mic pack #3 cuts out during worship — happens every Sunday morning.", status:"waiting",  claimedBy:null,           photo:null, comments:[], createdAt:new Date(Date.now()-3600000*1).toISOString(),  updatedAt:new Date(Date.now()-3600000*1).toISOString()  },
-  { id:"t2", name:"Marcus Webb",      contact:"210-555-0122",          location:"Youth Room",     issue:"HDMI cable for the projector is missing. Need it for Wednesday night service.", status:"on-it",   claimedBy:MOCK_AGENTS[0], photo:null, comments:[{ id:"c1", author:"Nick Garcia", avatar:"NG", text:"Ordered a replacement — arrives Tuesday.", type:"internal", ts:new Date(Date.now()-3600000*3).toISOString() }], createdAt:new Date(Date.now()-3600000*26).toISOString(), updatedAt:new Date(Date.now()-3600000*3).toISOString()  },
-  { id:"t3", name:"Tabitha Banks",    contact:"tb@godchasers.church", location:"Lobby",          issue:"TV display near the entrance is showing a slide from two weeks ago.",          status:"done",    claimedBy:MOCK_AGENTS[2], photo:null, comments:[{ id:"c2", author:"James Okafor", avatar:"JO", text:"Fixed — rebooted the media player and pushed a fresh slide.", type:"reply", ts:new Date(Date.now()-3600000*10).toISOString() }], createdAt:new Date(Date.now()-3600000*50).toISOString(), updatedAt:new Date(Date.now()-3600000*10).toISOString() },
-  { id:"t4", name:"Deacon Ray Smith", contact:"ray@gcc.org",          location:"Overflow Room",  issue:"Sound is cutting in and out from the overflow speakers during service.",        status:"waiting", claimedBy:null,           photo:null, comments:[], createdAt:new Date(Date.now()-3600000*4).toISOString(),  updatedAt:new Date(Date.now()-3600000*4).toISOString()  },
-];
-
 const STEPS = [
-  { key:"name",     question:"Hey! What's your name?",                  placeholder:"Type your name…",                        type:"text",     required:true  },
-  { key:"location", question:"Where's the issue happening?",            placeholder:"Main Sanctuary, Youth Room, Lobby…",      type:"text",     required:true  },
-  { key:"issue",    question:"Tell us what's going on.",                placeholder:"Describe what's happening — any detail helps…", type:"textarea", required:true  },
-  { key:"contact",  question:"How can we reach you?",                   placeholder:"Email or phone number",                   type:"text",     required:false },
-  { key:"photo",    question:"Got a photo or screenshot?",              placeholder:"",                                        type:"photo",    required:false },
+  { key:"name",     question:"Hey! What's your name?",               placeholder:"Type your name…",                         type:"text",     required:true  },
+  { key:"location", question:"Where's the issue happening?",         placeholder:"Main Sanctuary, Youth Room, Lobby…",       type:"text",     required:true  },
+  { key:"issue",    question:"Tell us what's going on.",             placeholder:"Describe what's happening — any detail helps…", type:"textarea", required:true  },
+  { key:"contact",  question:"How can we reach you?",                placeholder:"Email or phone number",                    type:"text",     required:false },
+  { key:"photo",    question:"Got a photo or screenshot?",           placeholder:"",                                         type:"photo",    required:false },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────
-function timeAgo(iso) {
-  const d = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(d / 60000);
-  if (m < 1) return "just now";
+function timeAgo(val) {
+  if (!val) return "";
+  const ts = val?.toDate ? val.toDate() : new Date(val);
+  const d  = Date.now() - ts.getTime();
+  const m  = Math.floor(d / 60000);
+  if (m < 1)  return "just now";
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
 }
-function uid() { return "t" + Date.now() + Math.random().toString(36).slice(2,6); }
 
-// ── Shared components ─────────────────────────────────────────
+async function uploadPhoto(file, ticketId) {
+  if (!file) return null;
+  const storageRef = ref(storage, `tickets/${ticketId}/${Date.now()}`);
+  await uploadBytes(storageRef, file);
+  return getDownloadURL(storageRef);
+}
+
+function dataURLtoBlob(dataURL) {
+  const arr  = dataURL.split(",");
+  const mime = arr[0].match(/:(.*?);/)[1];
+  const bstr = atob(arr[1]);
+  let n      = bstr.length;
+  const u8   = new Uint8Array(n);
+  while (n--) u8[n] = bstr.charCodeAt(n);
+  return new Blob([u8], { type: mime });
+}
+
+// ── Shared UI ─────────────────────────────────────────────────
 function HarbixLogo({ dark=false, size="md" }) {
   const sz = { sm:15, md:18, lg:26 }[size];
   return (
@@ -106,24 +120,34 @@ function Chip({ icon, children }) {
   );
 }
 
-function DarkScreen({ children }) {
+function Field({ label, error, optional, children }) {
   return (
-    <div style={{ minHeight:"100vh", background:`linear-gradient(160deg,${B.deep} 0%,${B.navy} 100%)`, display:"flex", flexDirection:"column", fontFamily:"'DM Sans',system-ui,sans-serif" }}>
-      <div style={{ padding:"16px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
-        <HarbixLogo dark />
-        <span style={{ fontSize:11, color:"rgba(255,255,255,0.3)", fontWeight:600, letterSpacing:"0.06em", textTransform:"uppercase" }}>GodChasers Church</span>
-      </div>
+    <div style={{ marginBottom:18 }}>
+      <label style={{ display:"block", fontSize:11, fontWeight:700, color:B.textSub, marginBottom:6, letterSpacing:"0.05em", textTransform:"uppercase" }}>
+        {label}{optional&&<span style={{ fontWeight:400, textTransform:"none", fontSize:11, color:B.muted, marginLeft:4 }}>Optional</span>}
+      </label>
       {children}
+      {error&&<span style={{ color:B.red, fontSize:11, marginTop:3, display:"block" }}>Required</span>}
     </div>
   );
 }
+
+const INP = (err) => ({
+  width:"100%", padding:"12px 14px", borderRadius:10,
+  border:`1.5px solid ${err?B.red:B.border}`,
+  fontSize:14, color:B.text, outline:"none",
+  boxSizing:"border-box", background:B.white,
+  fontFamily:"'DM Sans',system-ui,sans-serif",
+  WebkitAppearance:"none",
+});
 
 // ── Conversational Public Form ────────────────────────────────
 function PublicForm({ onSubmit }) {
   const [step, setStep]       = useState(0);
   const [answers, setAnswers] = useState({});
   const [current, setCurrent] = useState("");
-  const [photo, setPhoto]     = useState(null);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
   const [error, setError]     = useState(false);
   const [loading, setLoading] = useState(false);
   const [anim, setAnim]       = useState(false);
@@ -134,7 +158,6 @@ function PublicForm({ onSubmit }) {
   const photoRef = useRef();
   const s = STEPS[step];
 
-  // Detect iOS keyboard by watching visualViewport height shrink
   useEffect(() => {
     const initial = window.visualViewport?.height || window.innerHeight;
     const handler = () => {
@@ -158,111 +181,87 @@ function PublicForm({ onSubmit }) {
   };
 
   const advance = async () => {
-    if (s.required && s.type !== "photo" && !current.trim()) {
-      setError(true); return;
-    }
+    if (s.required && s.type !== "photo" && !current.trim()) { setError(true); return; }
     const updated = s.type !== "photo" ? { ...answers, [s.key]: current } : answers;
     setAnswers(updated);
     if (step < STEPS.length - 1) { go(1); return; }
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1000));
-    onSubmit({ id:uid(), ...updated, photo, status:"waiting", claimedBy:null, comments:[], createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() });
-    setLoading(false);
-    setDone(true);
+    try {
+      await onSubmit(updated, photoFile);
+    } finally {
+      setLoading(false);
+      setDone(true);
+    }
   };
 
   const skip = () => {
-    const updated = { ...answers };
-    setAnswers(updated);
-    if (step < STEPS.length - 1) go(1);
-    else advance();
+    if (step < STEPS.length - 1) go(1); else advance();
   };
 
   const handleFile = f => {
     if (!f || !f.type.startsWith("image/")) return;
+    setPhotoFile(f);
     const r = new FileReader();
-    r.onload = e => setPhoto(e.target.result);
+    r.onload = e => setPhotoPreview(e.target.result);
     r.readAsDataURL(f);
   };
 
   if (done) return (
-    <DarkScreen>
-      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"40px 24px", textAlign:"center" }}>
-        <div style={{ width:80, height:80, borderRadius:"50%", background:"rgba(16,185,129,0.15)", border:"2px solid rgba(16,185,129,0.35)", color:B.green, fontSize:36, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28 }}>✓</div>
-        <h2 style={{ margin:"0 0 12px", fontSize:28, fontWeight:800, color:B.white, letterSpacing:"-0.04em" }}>
-          Got it{answers.name ? `, ${answers.name.split(" ")[0]}` : ""}!
-        </h2>
-        <p style={{ color:"rgba(255,255,255,0.5)", fontSize:16, lineHeight:1.7, maxWidth:300, margin:"0 auto 36px" }}>
-          Someone from the AV team will follow up with you{answers.contact ? ` at ${answers.contact}` : ""} as soon as possible.
-        </p>
-        <button onClick={() => { setDone(false); setStep(0); setAnswers({}); setPhoto(null); setCurrent(""); }} style={{ background:"rgba(255,255,255,0.1)", color:"rgba(255,255,255,0.7)", border:"1.5px solid rgba(255,255,255,0.15)", borderRadius:12, padding:"13px 28px", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
-          Submit another issue
-        </button>
-      </div>
-    </DarkScreen>
+    <div style={{ height:"100dvh", background:`linear-gradient(160deg,${B.deep} 0%,${B.navy} 100%)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"40px 24px", textAlign:"center", fontFamily:"'DM Sans',system-ui,sans-serif" }}>
+      <div style={{ width:80, height:80, borderRadius:"50%", background:"rgba(16,185,129,0.15)", border:"2px solid rgba(16,185,129,0.35)", color:B.green, fontSize:36, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28 }}>✓</div>
+      <h2 style={{ margin:"0 0 12px", fontSize:28, fontWeight:800, color:B.white, letterSpacing:"-0.04em" }}>
+        Got it{answers.name?`, ${answers.name.split(" ")[0]}`:""}!
+      </h2>
+      <p style={{ color:"rgba(255,255,255,0.5)", fontSize:16, lineHeight:1.7, maxWidth:300, margin:"0 auto 36px" }}>
+        Someone from the AV team will follow up with you{answers.contact?` at ${answers.contact}`:""} as soon as possible.
+      </p>
+      <button onClick={()=>{ setDone(false); setStep(0); setAnswers({}); setPhotoFile(null); setPhotoPreview(null); setCurrent(""); }}
+        style={{ background:"rgba(255,255,255,0.1)", color:"rgba(255,255,255,0.7)", border:"1.5px solid rgba(255,255,255,0.15)", borderRadius:12, padding:"13px 28px", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+        Submit another issue
+      </button>
+    </div>
   );
 
-  const progress = (step / STEPS.length) * 100;
+  const progress  = (step / STEPS.length) * 100;
   const slideStyle = { opacity:anim?0:1, transform:anim?`translateX(${dir==="forward"?"28px":"-28px"})`:"translateX(0)", transition:"opacity 0.2s ease,transform 0.2s ease" };
 
   return (
-    // Use 100dvh so the layout respects the iOS keyboard shrinking the viewport
-    <div style={{ height:"100dvh", minHeight:"100dvh", background:`linear-gradient(160deg,${B.deep} 0%,${B.navy} 100%)`, display:"flex", flexDirection:"column", fontFamily:"'DM Sans',system-ui,sans-serif", overflow:"hidden" }}>
-      {/* Header */}
+    <div style={{ height:"100dvh", background:`linear-gradient(160deg,${B.deep} 0%,${B.navy} 100%)`, display:"flex", flexDirection:"column", fontFamily:"'DM Sans',system-ui,sans-serif", overflow:"hidden" }}>
       <div style={{ padding:"16px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
         <HarbixLogo dark />
         <span style={{ fontSize:11, color:"rgba(255,255,255,0.3)", fontWeight:600, letterSpacing:"0.06em", textTransform:"uppercase" }}>GodChasers Church</span>
       </div>
-
-      {/* Progress */}
       <div style={{ height:3, background:"rgba(255,255,255,0.08)", flexShrink:0 }}>
         <div style={{ height:"100%", background:B.orange, width:`${progress}%`, transition:"width 0.4s ease", borderRadius:"0 2px 2px 0" }} />
       </div>
-
-      {/* Scrollable content — sits above sticky footer */}
       <div style={{ flex:1, overflowY:"auto", padding:"28px 24px 16px", display:"flex", flexDirection:"column" }}>
-        {/* Top row */}
         <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:36, flexShrink:0 }}>
           {step > 0 && (
-            <button onClick={() => go(-1)} style={{ width:34, height:34, background:"rgba(255,255,255,0.1)", border:"none", borderRadius:"50%", color:"rgba(255,255,255,0.7)", fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
+            <button onClick={()=>go(-1)} style={{ width:34, height:34, background:"rgba(255,255,255,0.1)", border:"none", borderRadius:"50%", color:"rgba(255,255,255,0.7)", fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
           )}
           <span style={{ fontSize:12, color:"rgba(255,255,255,0.35)", fontWeight:600, letterSpacing:"0.06em" }}>{step+1} of {STEPS.length}</span>
         </div>
-
-        {/* Question + input */}
-        <div style={{ ...slideStyle }}>
+        <div style={slideStyle}>
           <h2 style={{ margin:"0 0 6px", fontSize:28, fontWeight:800, color:B.white, letterSpacing:"-0.04em", lineHeight:1.25 }}>{s.question}</h2>
           {!s.required && <p style={{ margin:"0 0 24px", fontSize:14, color:"rgba(255,255,255,0.38)" }}>Optional — tap Skip to continue</p>}
-          {s.required && <div style={{ marginBottom:24 }} />}
+          {s.required  && <div style={{ marginBottom:24 }} />}
 
-          {s.type === "text" && (
-            <input
-              ref={inputRef}
-              value={current}
-              onChange={e=>{setCurrent(e.target.value);setError(false);}}
+          {s.type==="text" && (
+            <input ref={inputRef} value={current} onChange={e=>{setCurrent(e.target.value);setError(false);}}
               onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); advance(); } }}
-              placeholder={s.placeholder}
-              enterKeyHint={step===STEPS.length-1?"send":"next"}
-              style={{ width:"100%", background:"rgba(255,255,255,0.09)", border:`1.5px solid ${error?"#FF6B6B":"rgba(255,255,255,0.18)"}`, borderRadius:14, padding:"16px 18px", fontSize:18, color:B.white, outline:"none", fontFamily:"inherit", WebkitAppearance:"none", caretColor:B.orange, boxSizing:"border-box" }}
-            />
+              placeholder={s.placeholder} enterKeyHint={step===STEPS.length-1?"send":"next"}
+              style={{ width:"100%", background:"rgba(255,255,255,0.09)", border:`1.5px solid ${error?"#FF6B6B":"rgba(255,255,255,0.18)"}`, borderRadius:14, padding:"16px 18px", fontSize:18, color:B.white, outline:"none", fontFamily:"inherit", WebkitAppearance:"none", caretColor:B.orange, boxSizing:"border-box" }} />
           )}
-
-          {s.type === "textarea" && (
-            <textarea
-              ref={inputRef}
-              value={current}
-              onChange={e=>{setCurrent(e.target.value);setError(false);}}
-              placeholder={s.placeholder}
-              rows={4}
-              style={{ width:"100%", background:"rgba(255,255,255,0.09)", border:`1.5px solid ${error?"#FF6B6B":"rgba(255,255,255,0.18)"}`, borderRadius:14, padding:"16px 18px", fontSize:16, color:B.white, outline:"none", fontFamily:"inherit", resize:"none", minHeight:120, caretColor:B.orange, boxSizing:"border-box" }}
-            />
+          {s.type==="textarea" && (
+            <textarea ref={inputRef} value={current} onChange={e=>{setCurrent(e.target.value);setError(false);}}
+              placeholder={s.placeholder} rows={4}
+              style={{ width:"100%", background:"rgba(255,255,255,0.09)", border:`1.5px solid ${error?"#FF6B6B":"rgba(255,255,255,0.18)"}`, borderRadius:14, padding:"16px 18px", fontSize:16, color:B.white, outline:"none", fontFamily:"inherit", resize:"none", minHeight:120, caretColor:B.orange, boxSizing:"border-box" }} />
           )}
-
-          {s.type === "photo" && (
-            photo ? (
+          {s.type==="photo" && (
+            photoPreview ? (
               <div style={{ position:"relative" }}>
-                <img src={photo} alt="preview" style={{ width:"100%", maxHeight:200, objectFit:"cover", borderRadius:14, border:"1.5px solid rgba(255,255,255,0.15)", display:"block" }} />
-                <button style={{ position:"absolute", top:10, right:10, background:"rgba(0,0,0,0.65)", color:"#fff", border:"none", borderRadius:6, padding:"4px 10px", fontSize:12, cursor:"pointer", fontWeight:700 }} onClick={()=>setPhoto(null)}>✕</button>
+                <img src={photoPreview} alt="preview" style={{ width:"100%", maxHeight:200, objectFit:"cover", borderRadius:14, border:"1.5px solid rgba(255,255,255,0.15)", display:"block" }} />
+                <button style={{ position:"absolute", top:10, right:10, background:"rgba(0,0,0,0.65)", color:"#fff", border:"none", borderRadius:6, padding:"4px 10px", fontSize:12, cursor:"pointer", fontWeight:700 }} onClick={()=>{ setPhotoFile(null); setPhotoPreview(null); }}>✕</button>
               </div>
             ) : (
               <div onClick={()=>photoRef.current.click()} style={{ border:"2px dashed rgba(255,255,255,0.18)", borderRadius:14, padding:"36px 20px", textAlign:"center", cursor:"pointer", background:"rgba(255,255,255,0.05)", display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
@@ -273,32 +272,23 @@ function PublicForm({ onSubmit }) {
               </div>
             )
           )}
-
           {error && <span style={{ color:"#FF8A80", fontSize:13, marginTop:8, display:"block" }}>This one's required — we need it to help you.</span>}
-
-          {/* Return key hint — shows when keyboard is up on text steps */}
-          {kbVisible && s.type === "text" && !error && (
+          {kbVisible && s.type==="text" && !error && (
             <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:14 }}>
               <span style={{ fontSize:12, color:"rgba(255,255,255,0.35)" }}>Press</span>
-              <span style={{ fontSize:11, color:"rgba(255,255,255,0.55)", background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:5, padding:"2px 8px", fontWeight:600, letterSpacing:"0.02em" }}>Return</span>
+              <span style={{ fontSize:11, color:"rgba(255,255,255,0.55)", background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:5, padding:"2px 8px", fontWeight:600 }}>Return</span>
               <span style={{ fontSize:12, color:"rgba(255,255,255,0.35)" }}>to continue</span>
             </div>
           )}
         </div>
       </div>
-
-      {/* Sticky footer — hidden on text steps when keyboard is up */}
-      <div style={{ flexShrink:0, padding:"12px 24px 32px", background:"transparent", transition:"opacity 0.2s ease", opacity: kbVisible && s.type === "text" ? 0 : 1, pointerEvents: kbVisible && s.type === "text" ? "none" : "auto" }}>
+      <div style={{ flexShrink:0, padding:"12px 24px 32px", transition:"opacity 0.2s ease", opacity:kbVisible&&s.type==="text"?0:1, pointerEvents:kbVisible&&s.type==="text"?"none":"auto" }}>
         <div style={{ display:"flex", gap:10 }}>
           {!s.required && (
             <button onClick={skip} style={{ padding:"15px 20px", background:"rgba(255,255,255,0.07)", color:"rgba(255,255,255,0.5)", border:"1.5px solid rgba(255,255,255,0.1)", borderRadius:14, fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>Skip</button>
           )}
-          <button
-            onClick={advance}
-            disabled={loading}
-            style={{ flex:1, background:B.orange, color:B.white, border:"none", borderRadius:14, padding:"16px 0", fontSize:17, fontWeight:800, cursor:loading?"default":"pointer", fontFamily:"inherit", opacity:loading?0.8:1 }}
-          >
-            {loading ? "Sending…" : step===STEPS.length-1 ? "Submit »" : "Next »"}
+          <button onClick={advance} disabled={loading} style={{ flex:1, background:B.orange, color:B.white, border:"none", borderRadius:14, padding:"16px 0", fontSize:17, fontWeight:800, cursor:loading?"default":"pointer", fontFamily:"inherit", opacity:loading?0.8:1 }}>
+            {loading?"Sending…":step===STEPS.length-1?"Submit »":"Next »"}
           </button>
         </div>
       </div>
@@ -309,12 +299,30 @@ function PublicForm({ onSubmit }) {
 // ── Google Login ──────────────────────────────────────────────
 function GoogleLogin({ onLogin }) {
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState(false);
+  const [err, setErr]         = useState("");
 
-  const mockLogin = async () => {
-    setLoading(true); setErr(false);
-    await new Promise(r => setTimeout(r, 1200));
-    onLogin(MOCK_AGENTS[0]);
+  const handleGoogleLogin = async () => {
+    setLoading(true); setErr("");
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const email  = result.user.email;
+      if (!email.endsWith("@godchasers.church")) {
+        await signOut(auth);
+        setErr("Access restricted to @godchasers.church accounts only.");
+        setLoading(false);
+        return;
+      }
+      const agent = {
+        id:     result.user.uid,
+        name:   result.user.displayName,
+        email,
+        avatar: result.user.displayName.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(),
+        photo:  result.user.photoURL,
+      };
+      onLogin(agent);
+    } catch (e) {
+      setErr("Sign-in failed. Please try again.");
+    }
     setLoading(false);
   };
 
@@ -329,21 +337,18 @@ function GoogleLogin({ onLogin }) {
           </div>
         </div>
         {err && (
-          <div style={{ background:B.redBg, border:`1px solid ${B.red}`, borderRadius:10, padding:"10px 14px", marginBottom:16, fontSize:13, color:B.redText }}>
-            Access restricted to @godchasers.church accounts only.
-          </div>
+          <div style={{ background:B.redBg, border:`1px solid ${B.red}`, borderRadius:10, padding:"10px 14px", marginBottom:16, fontSize:13, color:B.redText }}>{err}</div>
         )}
-        <button onClick={mockLogin} disabled={loading} style={{ width:"100%", padding:"13px 20px", borderRadius:12, border:`1.5px solid ${B.border}`, background:B.white, cursor:loading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10, fontSize:14, fontWeight:700, color:B.text, fontFamily:"inherit", opacity:loading?0.7:1, boxShadow:"0 1px 4px rgba(0,0,0,0.08)" }}>
+        <button onClick={handleGoogleLogin} disabled={loading} style={{ width:"100%", padding:"13px 20px", borderRadius:12, border:`1.5px solid ${B.border}`, background:B.white, cursor:loading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10, fontSize:14, fontWeight:700, color:B.text, fontFamily:"inherit", opacity:loading?0.7:1, boxShadow:"0 1px 4px rgba(0,0,0,0.08)" }}>
           <svg width="18" height="18" viewBox="0 0 48 48">
             <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.2l6.8-6.8C35.8 2.3 30.2 0 24 0 14.6 0 6.6 5.4 2.6 13.3l7.9 6.1C12.4 13.2 17.7 9.5 24 9.5z"/>
             <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/>
             <path fill="#FBBC05" d="M10.5 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.1.8-4.6l-7.9-6.1A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l7.9-6.1z"/>
             <path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.2-7.7 2.2-6.3 0-11.6-3.7-13.5-9.1l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/>
           </svg>
-          {loading ? "Signing in…" : "Continue with Google"}
+          {loading?"Signing in…":"Continue with Google"}
         </button>
         <p style={{ marginTop:18, fontSize:11, color:B.muted, lineHeight:1.5 }}>Only @godchasers.church accounts can access this portal.</p>
-        <p style={{ marginTop:8, fontSize:11, color:B.muted }}>(Demo: click the button to sign in)</p>
       </div>
     </div>
   );
@@ -351,7 +356,7 @@ function GoogleLogin({ onLogin }) {
 
 // ── Ticket Card ───────────────────────────────────────────────
 function TicketCard({ ticket, agent, onClaim, onUnclaim, onClick }) {
-  const isMine     = ticket.claimedBy?.id === agent?.id;
+  const isMine      = ticket.claimedBy?.id === agent?.id;
   const isUnclaimed = !ticket.claimedBy;
   return (
     <div style={{ background:B.white, border:`1px solid ${B.border}`, borderRadius:16, overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,0.05)" }}>
@@ -368,8 +373,8 @@ function TicketCard({ ticket, agent, onClaim, onUnclaim, onClick }) {
         </div>
         <div style={{ display:"flex", gap:5, marginBottom:10, flexWrap:"wrap" }}>
           <Chip icon="📍">{ticket.location}</Chip>
-          {ticket.photo && <Chip icon="📷">Photo</Chip>}
-          {ticket.comments.length>0 && <Chip icon="💬">{ticket.comments.length}</Chip>}
+          {ticket.photoURL && <Chip icon="📷">Photo</Chip>}
+          {ticket.comments?.length > 0 && <Chip icon="💬">{ticket.comments.length}</Chip>}
           {ticket.claimedBy && <Chip icon="👤">{ticket.claimedBy.name.split(" ")[0]}</Chip>}
         </div>
         <p style={{ margin:0, fontSize:13, color:B.textSub, lineHeight:1.55, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>{ticket.issue}</p>
@@ -425,16 +430,21 @@ function TicketRow({ ticket, agent, onClaim, onUnclaim, onClick }) {
 
 // ── Ticket Detail ─────────────────────────────────────────────
 function TicketDetail({ ticket, agent, onUpdate, onBack }) {
-  const [comment, setComment]       = useState("");
+  const [comment, setComment]         = useState("");
   const [commentType, setCommentType] = useState("internal");
-  const [lightbox, setLightbox]     = useState(false);
+  const [lightbox, setLightbox]       = useState(false);
+  const [saving, setSaving]           = useState(false);
 
-  const update = updates => onUpdate(ticket.id, { ...updates, updatedAt:new Date().toISOString() });
+  const update = async (updates) => {
+    setSaving(true);
+    await updateDoc(doc(db, "tickets", ticket.id), { ...updates, updatedAt: serverTimestamp() });
+    setSaving(false);
+  };
 
-  const addComment = () => {
+  const addComment = async () => {
     if (!comment.trim()) return;
     const c = { id:"c"+Date.now(), author:agent.name, avatar:agent.avatar, text:comment.trim(), type:commentType, ts:new Date().toISOString() };
-    update({ comments:[...ticket.comments, c] });
+    await update({ comments:[...(ticket.comments||[]), c] });
     setComment("");
   };
 
@@ -442,7 +452,7 @@ function TicketDetail({ ticket, agent, onUpdate, onBack }) {
     <div style={{ minHeight:"100vh", background:B.offWhite, fontFamily:"'DM Sans',system-ui,sans-serif" }}>
       {lightbox && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:999, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }} onClick={()=>setLightbox(false)}>
-          <img src={ticket.photo} alt="attachment" style={{ maxWidth:"95vw", maxHeight:"90vh", borderRadius:12 }} />
+          <img src={ticket.photoURL} alt="attachment" style={{ maxWidth:"95vw", maxHeight:"90vh", borderRadius:12 }} />
         </div>
       )}
       <div style={{ background:B.navy, padding:"0 16px", height:54, display:"flex", alignItems:"center", gap:12, position:"sticky", top:0, zIndex:10 }}>
@@ -450,9 +460,7 @@ function TicketDetail({ ticket, agent, onUpdate, onBack }) {
         <span style={{ fontWeight:700, fontSize:15, color:B.white, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{ticket.name}</span>
         <StatusBadge status={ticket.status} />
       </div>
-
       <div style={{ padding:"16px", maxWidth:640, margin:"0 auto" }}>
-        {/* Info card */}
         <div style={{ background:B.white, borderRadius:16, padding:"20px", marginBottom:14, border:`1px solid ${B.border}` }}>
           <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap" }}>
             <Chip icon="📍">{ticket.location}</Chip>
@@ -460,15 +468,14 @@ function TicketDetail({ ticket, agent, onUpdate, onBack }) {
             <Chip icon="🕐">{timeAgo(ticket.createdAt)}</Chip>
           </div>
           <p style={{ margin:0, fontSize:15, color:B.text, lineHeight:1.7 }}>{ticket.issue}</p>
-          {ticket.photo && (
+          {ticket.photoURL && (
             <div style={{ marginTop:16 }}>
-              <img src={ticket.photo} alt="attachment" style={{ width:140, height:96, objectFit:"cover", borderRadius:10, border:`1.5px solid ${B.border}`, cursor:"pointer" }} onClick={()=>setLightbox(true)} />
+              <img src={ticket.photoURL} alt="attachment" style={{ width:140, height:96, objectFit:"cover", borderRadius:10, border:`1.5px solid ${B.border}`, cursor:"pointer" }} onClick={()=>setLightbox(true)} />
               <div style={{ fontSize:11, color:B.muted, marginTop:4 }}>Tap to enlarge</div>
             </div>
           )}
         </div>
 
-        {/* Status & claim */}
         <div style={{ background:B.white, borderRadius:16, padding:"20px", marginBottom:14, border:`1px solid ${B.border}` }}>
           <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:14 }}>Status & Assignment</div>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
@@ -494,14 +501,13 @@ function TicketDetail({ ticket, agent, onUpdate, onBack }) {
           )}
         </div>
 
-        {/* Comments */}
         <div style={{ background:B.white, borderRadius:16, padding:"20px", border:`1px solid ${B.border}` }}>
           <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:16 }}>
-            Comments {ticket.comments.length>0 && `(${ticket.comments.length})`}
+            Comments {ticket.comments?.length>0&&`(${ticket.comments.length})`}
           </div>
-          {ticket.comments.length===0 && <p style={{ color:B.muted, fontSize:13, margin:"0 0 20px" }}>No comments yet.</p>}
+          {!ticket.comments?.length && <p style={{ color:B.muted, fontSize:13, margin:"0 0 20px" }}>No comments yet.</p>}
           <div style={{ display:"flex", flexDirection:"column", gap:14, marginBottom:20 }}>
-            {ticket.comments.map(c=>(
+            {(ticket.comments||[]).map(c=>(
               <div key={c.id} style={{ display:"flex", gap:10 }}>
                 <Avatar initials={c.avatar} size={30} color={c.type==="reply"?B.blue:B.navy} />
                 <div style={{ flex:1 }}>
@@ -523,9 +529,12 @@ function TicketDetail({ ticket, agent, onUpdate, onBack }) {
                 <button key={t} onClick={()=>setCommentType(t)} style={{ flex:1, padding:"7px 10px", borderRadius:8, border:`1.5px solid ${commentType===t?B.orange:B.border}`, background:commentType===t?B.orangeLight:B.white, color:commentType===t?B.orange:B.textSub, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>{label}</button>
               ))}
             </div>
-            <textarea value={comment} onChange={e=>setComment(e.target.value)} placeholder={commentType==="reply"?"Write a reply — submitter will be notified…":"Add a note only your team can see…"}
-              style={{ width:"100%", padding:"12px 14px", borderRadius:10, border:`1.5px solid ${B.border}`, fontSize:14, color:B.text, outline:"none", boxSizing:"border-box", fontFamily:"inherit", resize:"none", minHeight:85, marginBottom:10, WebkitAppearance:"none" }} rows={3} />
-            <button style={{ ...BTN.orangeSolid, width:"100%", padding:"12px 0", borderRadius:10, fontSize:14 }} onClick={addComment}>Add Comment</button>
+            <textarea value={comment} onChange={e=>setComment(e.target.value)}
+              placeholder={commentType==="reply"?"Write a reply — submitter will be notified…":"Add a note only your team can see…"}
+              style={{ ...INP(false), resize:"none", minHeight:85, fontFamily:"inherit", marginBottom:10 }} rows={3} />
+            <button style={{ ...BTN.orangeSolid, width:"100%", padding:"12px 0", borderRadius:10, fontSize:14 }} onClick={addComment} disabled={saving}>
+              {saving?"Saving…":"Add Comment"}
+            </button>
           </div>
         </div>
       </div>
@@ -535,28 +544,32 @@ function TicketDetail({ ticket, agent, onUpdate, onBack }) {
 
 // ── New Ticket Modal ──────────────────────────────────────────
 function NewTicketModal({ agent, onClose, onSubmit }) {
-  const [form, setForm]   = useState({ name:"", contact:"", location:"", issue:"" });
-  const [photo, setPhoto] = useState(null);
+  const [form, setForm]     = useState({ name:"", contact:"", location:"", issue:"" });
+  const [photoFile, setPhotoFile]     = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
   const [status, setStatus] = useState("waiting");
   const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
   const photoRef = useRef();
 
   const set = (k,v) => { setForm(f=>({...f,[k]:v})); setErrors(e=>({...e,[k]:false})); };
-  const validate = () => {
-    const e = {};
-    if (!form.name) e.name=true;
-    if (!form.location) e.location=true;
-    if (!form.issue) e.issue=true;
-    setErrors(e);
-    return !Object.keys(e).length;
-  };
   const handleFile = f => {
     if (!f||!f.type.startsWith("image/")) return;
-    const r=new FileReader(); r.onload=e=>setPhoto(e.target.result); r.readAsDataURL(f);
+    setPhotoFile(f);
+    const r=new FileReader(); r.onload=e=>setPhotoPreview(e.target.result); r.readAsDataURL(f);
   };
-  const submit = () => {
-    if (!validate()) return;
-    onSubmit({ id:uid(), ...form, photo, status, claimedBy:status==="on-it"?agent:null, comments:[], createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() });
+  const validate = () => {
+    const e={};
+    if(!form.name)e.name=true;
+    if(!form.location)e.location=true;
+    if(!form.issue)e.issue=true;
+    setErrors(e); return !Object.keys(e).length;
+  };
+  const submit = async () => {
+    if(!validate()) return;
+    setSaving(true);
+    await onSubmit(form, photoFile, status, status==="on-it"?agent:null);
+    setSaving(false);
     onClose();
   };
 
@@ -568,20 +581,14 @@ function NewTicketModal({ agent, onClose, onSubmit }) {
           <button style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:B.muted }} onClick={onClose}>✕</button>
         </div>
         {[{k:"name",l:"Submitter Name",p:"Who is this for?",req:true},{k:"contact",l:"Contact Info",p:"Email or phone (optional)",req:false},{k:"location",l:"Location",p:"Where is the issue?",req:true}].map(({k,l,p,req})=>(
-          <div key={k} style={{ marginBottom:16 }}>
-            <label style={{ display:"block", fontSize:11, fontWeight:700, color:B.textSub, marginBottom:5, letterSpacing:"0.05em", textTransform:"uppercase" }}>{l}{!req&&<span style={{ fontWeight:400, textTransform:"none", fontSize:11, color:B.muted, marginLeft:4 }}>Optional</span>}</label>
-            <input value={form[k]} placeholder={p} onChange={e=>set(k,e.target.value)} style={{ width:"100%", padding:"12px 14px", borderRadius:10, border:`1.5px solid ${errors[k]?B.red:B.border}`, fontSize:14, color:B.text, outline:"none", boxSizing:"border-box", fontFamily:"inherit", WebkitAppearance:"none" }} />
-            {errors[k]&&<span style={{ color:B.red, fontSize:11, marginTop:3, display:"block" }}>Required</span>}
-          </div>
+          <Field key={k} label={l} error={errors[k]} optional={!req}>
+            <input style={INP(errors[k])} value={form[k]} placeholder={p} onChange={e=>set(k,e.target.value)} />
+          </Field>
         ))}
-        <div style={{ marginBottom:16 }}>
-          <label style={{ display:"block", fontSize:11, fontWeight:700, color:B.textSub, marginBottom:5, letterSpacing:"0.05em", textTransform:"uppercase" }}>Issue Description</label>
-          <textarea value={form.issue} placeholder="Describe the issue" onChange={e=>set("issue",e.target.value)}
-            style={{ width:"100%", padding:"12px 14px", borderRadius:10, border:`1.5px solid ${errors.issue?B.red:B.border}`, fontSize:14, color:B.text, outline:"none", boxSizing:"border-box", fontFamily:"inherit", resize:"none", minHeight:90 }} rows={3} />
-          {errors.issue&&<span style={{ color:B.red, fontSize:11, marginTop:3, display:"block" }}>Required</span>}
-        </div>
-        <div style={{ marginBottom:16 }}>
-          <label style={{ display:"block", fontSize:11, fontWeight:700, color:B.textSub, marginBottom:8, letterSpacing:"0.05em", textTransform:"uppercase" }}>Initial Status</label>
+        <Field label="Issue Description" error={errors.issue}>
+          <textarea style={{ ...INP(errors.issue), resize:"none", fontFamily:"inherit", minHeight:90 }} value={form.issue} placeholder="Describe the issue" onChange={e=>set("issue",e.target.value)} rows={3} />
+        </Field>
+        <Field label="Initial Status" error={false}>
           <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
             {Object.entries(STATUS).slice(0,3).map(([k,v])=>(
               <button key={k} onClick={()=>setStatus(k)} style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 13px", borderRadius:8, border:`1.5px solid ${status===k?B.orange:B.border}`, background:status===k?B.orangeLight:B.white, cursor:"pointer", fontFamily:"inherit", fontSize:13, fontWeight:status===k?700:400, color:status===k?B.orange:B.text }}>
@@ -589,13 +596,12 @@ function NewTicketModal({ agent, onClose, onSubmit }) {
               </button>
             ))}
           </div>
-        </div>
-        <div style={{ marginBottom:20 }}>
-          <label style={{ display:"block", fontSize:11, fontWeight:700, color:B.textSub, marginBottom:8, letterSpacing:"0.05em", textTransform:"uppercase" }}>Photo <span style={{ fontWeight:400, textTransform:"none", color:B.muted }}>Optional</span></label>
-          {photo ? (
+        </Field>
+        <Field label="Photo" optional>
+          {photoPreview ? (
             <div style={{ position:"relative" }}>
-              <img src={photo} alt="preview" style={{ width:"100%", maxHeight:160, objectFit:"cover", borderRadius:10, border:`1.5px solid ${B.border}`, display:"block" }} />
-              <button style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.65)", color:"#fff", border:"none", borderRadius:6, padding:"4px 10px", fontSize:12, cursor:"pointer", fontWeight:700 }} onClick={()=>setPhoto(null)}>✕</button>
+              <img src={photoPreview} alt="preview" style={{ width:"100%", maxHeight:160, objectFit:"cover", borderRadius:10, border:`1.5px solid ${B.border}`, display:"block" }} />
+              <button style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.65)", color:"#fff", border:"none", borderRadius:6, padding:"4px 10px", fontSize:12, cursor:"pointer", fontWeight:700 }} onClick={()=>{ setPhotoFile(null); setPhotoPreview(null); }}>✕</button>
             </div>
           ) : (
             <div onClick={()=>photoRef.current.click()} style={{ border:`2px dashed ${B.border}`, borderRadius:10, padding:"16px", textAlign:"center", cursor:"pointer", background:B.offWhite }}>
@@ -603,10 +609,12 @@ function NewTicketModal({ agent, onClose, onSubmit }) {
               <input ref={photoRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>handleFile(e.target.files[0])} />
             </div>
           )}
-        </div>
+        </Field>
         <div style={{ display:"flex", gap:10 }}>
           <button style={{ ...BTN.ghost, flex:1, padding:"12px 0", borderRadius:10, fontSize:14 }} onClick={onClose}>Cancel</button>
-          <button style={{ ...BTN.orangeSolid, flex:2, padding:"12px 0", borderRadius:10, fontSize:14 }} onClick={submit}>Create Ticket</button>
+          <button style={{ ...BTN.orangeSolid, flex:2, padding:"12px 0", borderRadius:10, fontSize:14, opacity:saving?0.7:1 }} onClick={submit} disabled={saving}>
+            {saving?"Creating…":"Create Ticket"}
+          </button>
         </div>
       </div>
     </div>
@@ -615,8 +623,8 @@ function NewTicketModal({ agent, onClose, onSubmit }) {
 
 // ── Agent Dashboard ───────────────────────────────────────────
 function AgentDashboard({ agent, tickets, onUpdate, onAdd, onLogout }) {
-  const [tab, setTab]       = useState("all");
-  const [view, setView]     = useState("card");
+  const [tab, setTab]           = useState("all");
+  const [view, setView]         = useState("card");
   const [selected, setSelected] = useState(null);
   const [showNew, setShowNew]   = useState(false);
   const [search, setSearch]     = useState("");
@@ -638,32 +646,31 @@ function AgentDashboard({ agent, tickets, onUpdate, onAdd, onLogout }) {
     return matchTab && (!search || t.name.toLowerCase().includes(s) || t.issue.toLowerCase().includes(s) || t.location.toLowerCase().includes(s));
   });
 
-  const claim   = id => onUpdate(id,{claimedBy:agent,status:"on-it",updatedAt:new Date().toISOString()});
-  const unclaim = id => onUpdate(id,{claimedBy:null,status:"waiting",updatedAt:new Date().toISOString()});
+  const claim   = id => onUpdate(id,{claimedBy:agent,status:"on-it"});
+  const unclaim = id => onUpdate(id,{claimedBy:null,status:"waiting"});
 
   if (selected) {
-    const live = tickets.find(t=>t.id===selected)||null;
+    const live = tickets.find(t=>t.id===selected);
     if (!live) { setSelected(null); return null; }
     return <TicketDetail ticket={live} agent={agent} onUpdate={onUpdate} onBack={()=>setSelected(null)} />;
   }
 
   return (
     <div style={{ minHeight:"100vh", background:B.offWhite, fontFamily:"'DM Sans',system-ui,sans-serif" }}>
-      {showNew && <NewTicketModal agent={agent} onClose={()=>setShowNew(false)} onSubmit={t=>{onAdd(t);setShowNew(false);}} />}
-
-      {/* Nav */}
+      {showNew && <NewTicketModal agent={agent} onClose={()=>setShowNew(false)} onSubmit={onAdd} />}
       <div style={{ background:B.navy, padding:"0 16px", height:54, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:10 }}>
         <HarbixLogo dark size="sm" />
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <button style={{ ...BTN.orangeSolid, fontSize:13, padding:"7px 14px", borderRadius:8 }} onClick={()=>setShowNew(true)}>+ New</button>
           <div style={{ display:"flex", alignItems:"center", gap:7, cursor:"pointer" }} onClick={onLogout}>
-            <Avatar initials={agent.avatar} size={28} color={B.navyDark} />
+            {agent.photo
+              ? <img src={agent.photo} alt="avatar" style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover" }} />
+              : <Avatar initials={agent.avatar} size={28} color={B.navyDark} />
+            }
             <span style={{ fontSize:12, color:"rgba(255,255,255,0.55)", fontWeight:500 }}>Sign out</span>
           </div>
         </div>
       </div>
-
-      {/* Stats */}
       <div style={{ background:B.navy, padding:"0 16px 16px" }}>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
           {[["All",counts.all,B.white],["Waiting",counts.waiting,B.amber],["Mine",counts.mine,B.orange],["Done",counts.done,B.green]].map(([label,count,color])=>(
@@ -674,8 +681,6 @@ function AgentDashboard({ agent, tickets, onUpdate, onAdd, onLogout }) {
           ))}
         </div>
       </div>
-
-      {/* Tabs */}
       <div style={{ background:B.white, borderBottom:`1px solid ${B.border}`, padding:"0 16px", display:"flex", overflowX:"auto" }}>
         {[["all","All"],["waiting","Waiting"],["mine","My Queue"],["done","Done"]].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)} style={{ background:"none", border:"none", borderBottom:`2.5px solid ${tab===key?B.orange:"transparent"}`, padding:"13px 14px", fontSize:13, fontWeight:tab===key?700:500, color:tab===key?B.orange:B.textSub, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
@@ -683,8 +688,6 @@ function AgentDashboard({ agent, tickets, onUpdate, onAdd, onLogout }) {
           </button>
         ))}
       </div>
-
-      {/* Toolbar */}
       <div style={{ padding:"12px 16px", display:"flex", gap:8 }}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search tickets…" style={{ flex:1, padding:"10px 14px", borderRadius:10, border:`1.5px solid ${B.border}`, fontSize:13, color:B.text, outline:"none", fontFamily:"inherit", background:B.white, WebkitAppearance:"none" }} />
         <div style={{ display:"flex", gap:4 }}>
@@ -693,8 +696,6 @@ function AgentDashboard({ agent, tickets, onUpdate, onAdd, onLogout }) {
           ))}
         </div>
       </div>
-
-      {/* Tickets */}
       <div style={{ padding:"0 16px 40px" }}>
         {filtered.length===0 ? (
           <div style={{ textAlign:"center", padding:"60px 0", color:B.muted }}>
@@ -721,28 +722,134 @@ const BTN = {
   ghost:       { background:B.white, color:B.textSub, border:`1.5px solid ${B.border}`, borderRadius:10, padding:"10px 20px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"'DM Sans',system-ui,sans-serif" },
 };
 
-// ── Root ──────────────────────────────────────────────────────
+// ── Root App — real Firebase wired up ────────────────────────
 export default function App() {
-  const [page, setPage]     = useState("public");
-  const [agent, setAgent]   = useState(null);
-  const [tickets, setTickets] = useState(MOCK_TICKETS);
+  const [user, setUser]       = useState(undefined); // undefined = loading
+  const [agent, setAgent]     = useState(null);
+  const [tickets, setTickets] = useState([]);
+  const [page, setPage]       = useState("public");
 
-  const updateTicket = (id, updates) => setTickets(prev=>prev.map(t=>t.id===id?{...t,...updates}:t));
-  const addTicket    = t => setTickets(prev=>[t,...prev]);
-  const handleLogin  = a => { setAgent(a); setPage("agent"); };
-  const handleLogout = () => { setAgent(null); setPage("public"); };
+  // ── Auth listener
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser && firebaseUser.email.endsWith("@godchasers.church")) {
+        const a = {
+          id:     firebaseUser.uid,
+          name:   firebaseUser.displayName,
+          email:  firebaseUser.email,
+          avatar: firebaseUser.displayName.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(),
+          photo:  firebaseUser.photoURL,
+        };
+        setAgent(a);
+        setUser(firebaseUser);
+      } else {
+        setAgent(null);
+        setUser(null);
+      }
+    });
+    return unsub;
+  }, []);
+
+  // ── Firestore real-time listener (only when agent is logged in)
+  useEffect(() => {
+    if (!agent) return;
+    const q = query(collection(db, "tickets"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, (snap) => {
+      setTickets(snap.docs.map(d => ({ id:d.id, ...d.data() })));
+    });
+    return unsub;
+  }, [agent]);
+
+  // ── Submit ticket (public form)
+  const handleSubmit = async (answers, photoFile) => {
+    const ticketId = "t_" + Date.now();
+    let photoURL   = null;
+
+    if (photoFile) {
+      photoURL = await uploadPhoto(photoFile, ticketId);
+    }
+
+    const ticketData = {
+      name:      answers.name     || "",
+      contact:   answers.contact  || "",
+      location:  answers.location || "",
+      issue:     answers.issue    || "",
+      photoURL,
+      status:    "waiting",
+      claimedBy: null,
+      comments:  [],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    // Save to Firestore
+    const docRef = await addDoc(collection(db, "tickets"), ticketData);
+
+    // Send to Planning Center via serverless function
+    try {
+      await fetch("/api/submit-ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...ticketData, firestoreId: docRef.id, createdAt: new Date().toISOString() }),
+      });
+    } catch (e) {
+      console.error("PC sync failed:", e);
+      // Non-fatal — ticket is already in Firestore
+    }
+  };
+
+  // ── Update ticket (agent actions)
+  const handleUpdate = async (id, updates) => {
+    await updateDoc(doc(db, "tickets", id), { ...updates, updatedAt: serverTimestamp() });
+  };
+
+  // ── Add ticket (agent creates manually)
+  const handleAdd = async (form, photoFile, status, claimedBy) => {
+    let photoURL = null;
+    if (photoFile) {
+      const tempId = "t_" + Date.now();
+      photoURL = await uploadPhoto(photoFile, tempId);
+    }
+    const ticketData = {
+      name:      form.name     || "",
+      contact:   form.contact  || "",
+      location:  form.location || "",
+      issue:     form.issue    || "",
+      photoURL,
+      status:    status || "waiting",
+      claimedBy: claimedBy || null,
+      comments:  [],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    await addDoc(collection(db, "tickets"), ticketData);
+  };
+
+  const handleLogin  = (a) => { setAgent(a); setPage("agent"); };
+  const handleLogout = async () => { await signOut(auth); setAgent(null); setPage("public"); };
+
+  // Loading state while Firebase checks auth
+  if (user === undefined) return (
+    <div style={{ minHeight:"100vh", background:`linear-gradient(160deg,${B.deep} 0%,${B.navy} 100%)`, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ textAlign:"center" }}>
+        <div style={{ fontSize:32, fontWeight:900, color:B.orange, fontFamily:"Georgia,serif", fontStyle:"italic", marginBottom:12 }}>»</div>
+        <div style={{ fontSize:14, color:"rgba(255,255,255,0.4)", fontFamily:"'DM Sans',sans-serif" }}>Loading…</div>
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ fontFamily:"'DM Sans',system-ui,sans-serif" }}>
-      {/* Demo switcher — remove in production */}
-      <div style={{ position:"fixed", bottom:16, right:16, zIndex:200, display:"flex", gap:8 }}>
-        <button style={{ ...BTN.ghost, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.12)" }} onClick={()=>setPage("public")}>👤 User</button>
-        <button style={{ ...BTN.orangeSolid, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.15)" }} onClick={()=>{ if(agent)setPage("agent"); else setPage("login"); }}>🔒 Agent</button>
-      </div>
-
-      {page==="public" && <PublicForm onSubmit={t=>{addTicket(t);}} />}
-      {page==="login"  && <GoogleLogin onLogin={handleLogin} />}
-      {page==="agent"  && agent && <AgentDashboard agent={agent} tickets={tickets} onUpdate={updateTicket} onAdd={addTicket} onLogout={handleLogout} />}
+      {/* Page switcher — only show when not logged in as agent */}
+      {!agent && (
+        <div style={{ position:"fixed", bottom:16, right:16, zIndex:200, display:"flex", gap:8 }}>
+          <button style={{ ...BTN.ghost, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.12)" }} onClick={()=>setPage("public")}>👤 User</button>
+          <button style={{ ...BTN.orangeSolid, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.15)" }} onClick={()=>setPage("login")}>🔒 Agent</button>
+        </div>
+      )}
+      {page==="public" && <PublicForm onSubmit={handleSubmit} />}
+      {page==="login"  && !agent && <GoogleLogin onLogin={handleLogin} />}
+      {agent && <AgentDashboard agent={agent} tickets={tickets} onUpdate={handleUpdate} onAdd={handleAdd} onLogout={handleLogout} />}
     </div>
   );
 }

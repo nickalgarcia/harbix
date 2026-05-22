@@ -729,22 +729,25 @@ export default function App() {
   const [tickets, setTickets] = useState([]);
   const [page, setPage]       = useState("public");
 
-  // ── Auth listener
+  // ── Auth listener — auto-redirect on refresh if already logged in
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser && firebaseUser.email.endsWith("@godchasers.church")) {
+      if (firebaseUser && firebaseUser.email?.endsWith("@godchasers.church")) {
         const a = {
           id:     firebaseUser.uid,
-          name:   firebaseUser.displayName,
+          name:   firebaseUser.displayName || firebaseUser.email,
           email:  firebaseUser.email,
-          avatar: firebaseUser.displayName.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(),
+          avatar: (firebaseUser.displayName || "??").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(),
           photo:  firebaseUser.photoURL,
         };
         setAgent(a);
         setUser(firebaseUser);
+        // Auto-redirect to agent dashboard when Firebase confirms login
+        setPage("agent");
       } else {
         setAgent(null);
         setUser(null);
+        setPage("public");
       }
     });
     return unsub;
@@ -838,18 +841,28 @@ export default function App() {
     </div>
   );
 
+  // If agent is logged in, always show dashboard regardless of page state
+  if (agent) return (
+    <AgentDashboard
+      agent={agent}
+      tickets={tickets}
+      onUpdate={handleUpdate}
+      onAdd={handleAdd}
+      onLogout={handleLogout}
+    />
+  );
+
   return (
     <div style={{ fontFamily:"'DM Sans',system-ui,sans-serif" }}>
-      {/* Page switcher — only show when not logged in as agent */}
-      {!agent && (
+      {/* Demo switcher — remove before handing off to church */}
+      {page !== "login" && (
         <div style={{ position:"fixed", bottom:16, right:16, zIndex:200, display:"flex", gap:8 }}>
           <button style={{ ...BTN.ghost, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.12)" }} onClick={()=>setPage("public")}>👤 User</button>
           <button style={{ ...BTN.orangeSolid, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.15)" }} onClick={()=>setPage("login")}>🔒 Agent</button>
         </div>
       )}
-      {page==="public" && <PublicForm onSubmit={handleSubmit} />}
-      {page==="login"  && !agent && <GoogleLogin onLogin={handleLogin} />}
-      {agent && <AgentDashboard agent={agent} tickets={tickets} onUpdate={handleUpdate} onAdd={handleAdd} onLogout={handleLogout} />}
+      {page === "public" && <PublicForm onSubmit={handleSubmit} />}
+      {page === "login"  && <GoogleLogin onLogin={handleLogin} />}
     </div>
   );
 }

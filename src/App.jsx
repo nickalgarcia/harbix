@@ -768,8 +768,13 @@ export default function App() {
     const ticketId = "t_" + Date.now();
     let photoURL   = null;
 
+    // Photo upload is non-blocking — ticket saves even if photo fails
     if (photoFile) {
-      photoURL = await uploadPhoto(photoFile, ticketId);
+      try {
+        photoURL = await uploadPhoto(photoFile, ticketId);
+      } catch (e) {
+        console.warn("Photo upload failed — saving ticket without photo:", e);
+      }
     }
 
     const ticketData = {

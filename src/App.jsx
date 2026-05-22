@@ -194,41 +194,62 @@ function PublicForm({ onSubmit }) {
   const slideStyle = { opacity:anim?0:1, transform:anim?`translateX(${dir==="forward"?"28px":"-28px"})`:"translateX(0)", transition:"opacity 0.2s ease,transform 0.2s ease" };
 
   return (
-    <DarkScreen>
+    // Use 100dvh so the layout respects the iOS keyboard shrinking the viewport
+    <div style={{ height:"100dvh", minHeight:"100dvh", background:`linear-gradient(160deg,${B.deep} 0%,${B.navy} 100%)`, display:"flex", flexDirection:"column", fontFamily:"'DM Sans',system-ui,sans-serif", overflow:"hidden" }}>
+      {/* Header */}
+      <div style={{ padding:"16px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
+        <HarbixLogo dark />
+        <span style={{ fontSize:11, color:"rgba(255,255,255,0.3)", fontWeight:600, letterSpacing:"0.06em", textTransform:"uppercase" }}>GodChasers Church</span>
+      </div>
+
       {/* Progress */}
       <div style={{ height:3, background:"rgba(255,255,255,0.08)", flexShrink:0 }}>
         <div style={{ height:"100%", background:B.orange, width:`${progress}%`, transition:"width 0.4s ease", borderRadius:"0 2px 2px 0" }} />
       </div>
 
-      <div style={{ flex:1, display:"flex", flexDirection:"column", padding:"28px 24px 40px" }}>
+      {/* Scrollable content — sits above sticky footer */}
+      <div style={{ flex:1, overflowY:"auto", padding:"28px 24px 16px", display:"flex", flexDirection:"column" }}>
         {/* Top row */}
-        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:44, flexShrink:0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:36, flexShrink:0 }}>
           {step > 0 && (
             <button onClick={() => go(-1)} style={{ width:34, height:34, background:"rgba(255,255,255,0.1)", border:"none", borderRadius:"50%", color:"rgba(255,255,255,0.7)", fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
           )}
           <span style={{ fontSize:12, color:"rgba(255,255,255,0.35)", fontWeight:600, letterSpacing:"0.06em" }}>{step+1} of {STEPS.length}</span>
         </div>
 
-        {/* Question */}
-        <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", ...slideStyle }}>
+        {/* Question + input */}
+        <div style={{ ...slideStyle }}>
           <h2 style={{ margin:"0 0 6px", fontSize:28, fontWeight:800, color:B.white, letterSpacing:"-0.04em", lineHeight:1.25 }}>{s.question}</h2>
-          {!s.required && <p style={{ margin:"0 0 28px", fontSize:14, color:"rgba(255,255,255,0.38)" }}>Optional — tap Skip to continue</p>}
-          {s.required && <div style={{ marginBottom:28 }} />}
+          {!s.required && <p style={{ margin:"0 0 24px", fontSize:14, color:"rgba(255,255,255,0.38)" }}>Optional — tap Skip to continue</p>}
+          {s.required && <div style={{ marginBottom:24 }} />}
 
           {s.type === "text" && (
-            <input ref={inputRef} value={current} onChange={e=>{setCurrent(e.target.value);setError(false);}} onKeyDown={e=>e.key==="Enter"&&advance()} placeholder={s.placeholder}
-              style={{ background:"rgba(255,255,255,0.09)", border:`1.5px solid ${error?"#FF6B6B":"rgba(255,255,255,0.18)"}`, borderRadius:14, padding:"16px 18px", fontSize:18, color:B.white, outline:"none", fontFamily:"inherit", WebkitAppearance:"none", caretColor:B.orange }} />
+            <input
+              ref={inputRef}
+              value={current}
+              onChange={e=>{setCurrent(e.target.value);setError(false);}}
+              onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); advance(); } }}
+              placeholder={s.placeholder}
+              enterKeyHint={step===STEPS.length-1?"send":"next"}
+              style={{ width:"100%", background:"rgba(255,255,255,0.09)", border:`1.5px solid ${error?"#FF6B6B":"rgba(255,255,255,0.18)"}`, borderRadius:14, padding:"16px 18px", fontSize:18, color:B.white, outline:"none", fontFamily:"inherit", WebkitAppearance:"none", caretColor:B.orange, boxSizing:"border-box" }}
+            />
           )}
 
           {s.type === "textarea" && (
-            <textarea ref={inputRef} value={current} onChange={e=>{setCurrent(e.target.value);setError(false);}} placeholder={s.placeholder} rows={4}
-              style={{ background:"rgba(255,255,255,0.09)", border:`1.5px solid ${error?"#FF6B6B":"rgba(255,255,255,0.18)"}`, borderRadius:14, padding:"16px 18px", fontSize:16, color:B.white, outline:"none", fontFamily:"inherit", resize:"none", minHeight:130, caretColor:B.orange }} />
+            <textarea
+              ref={inputRef}
+              value={current}
+              onChange={e=>{setCurrent(e.target.value);setError(false);}}
+              placeholder={s.placeholder}
+              rows={4}
+              style={{ width:"100%", background:"rgba(255,255,255,0.09)", border:`1.5px solid ${error?"#FF6B6B":"rgba(255,255,255,0.18)"}`, borderRadius:14, padding:"16px 18px", fontSize:16, color:B.white, outline:"none", fontFamily:"inherit", resize:"none", minHeight:120, caretColor:B.orange, boxSizing:"border-box" }}
+            />
           )}
 
           {s.type === "photo" && (
             photo ? (
               <div style={{ position:"relative" }}>
-                <img src={photo} alt="preview" style={{ width:"100%", maxHeight:220, objectFit:"cover", borderRadius:14, border:"1.5px solid rgba(255,255,255,0.15)", display:"block" }} />
+                <img src={photo} alt="preview" style={{ width:"100%", maxHeight:200, objectFit:"cover", borderRadius:14, border:"1.5px solid rgba(255,255,255,0.15)", display:"block" }} />
                 <button style={{ position:"absolute", top:10, right:10, background:"rgba(0,0,0,0.65)", color:"#fff", border:"none", borderRadius:6, padding:"4px 10px", fontSize:12, cursor:"pointer", fontWeight:700 }} onClick={()=>setPhoto(null)}>✕</button>
               </div>
             ) : (
@@ -243,18 +264,24 @@ function PublicForm({ onSubmit }) {
 
           {error && <span style={{ color:"#FF8A80", fontSize:13, marginTop:8, display:"block" }}>This one's required — we need it to help you.</span>}
         </div>
+      </div>
 
-        {/* Buttons */}
-        <div style={{ display:"flex", gap:10, marginTop:32, flexShrink:0 }}>
+      {/* Sticky footer — always visible above keyboard */}
+      <div style={{ flexShrink:0, padding:"12px 24px 32px", background:"transparent" }}>
+        <div style={{ display:"flex", gap:10 }}>
           {!s.required && (
             <button onClick={skip} style={{ padding:"15px 20px", background:"rgba(255,255,255,0.07)", color:"rgba(255,255,255,0.5)", border:"1.5px solid rgba(255,255,255,0.1)", borderRadius:14, fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>Skip</button>
           )}
-          <button onClick={advance} disabled={loading} style={{ flex:1, background:B.orange, color:B.white, border:"none", borderRadius:14, padding:"16px 0", fontSize:17, fontWeight:800, cursor:loading?"default":"pointer", fontFamily:"inherit", opacity:loading?0.8:1 }}>
+          <button
+            onClick={advance}
+            disabled={loading}
+            style={{ flex:1, background:B.orange, color:B.white, border:"none", borderRadius:14, padding:"16px 0", fontSize:17, fontWeight:800, cursor:loading?"default":"pointer", fontFamily:"inherit", opacity:loading?0.8:1 }}
+          >
             {loading ? "Sending…" : step===STEPS.length-1 ? "Submit »" : "Next »"}
           </button>
         </div>
       </div>
-    </DarkScreen>
+    </div>
   );
 }
 

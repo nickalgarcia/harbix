@@ -5,7 +5,7 @@ import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  authDomain:        "harbix.vercel.app", // ← change this line
   projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_ID,

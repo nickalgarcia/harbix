@@ -129,9 +129,21 @@ function PublicForm({ onSubmit }) {
   const [anim, setAnim]       = useState(false);
   const [dir, setDir]         = useState("forward");
   const [done, setDone]       = useState(false);
+  const [kbVisible, setKbVisible] = useState(false);
   const inputRef = useRef();
   const photoRef = useRef();
   const s = STEPS[step];
+
+  // Detect iOS keyboard by watching visualViewport height shrink
+  useEffect(() => {
+    const initial = window.visualViewport?.height || window.innerHeight;
+    const handler = () => {
+      const h = window.visualViewport?.height || window.innerHeight;
+      setKbVisible(h < initial * 0.85);
+    };
+    const vp = window.visualViewport;
+    if (vp) { vp.addEventListener("resize", handler); return () => vp.removeEventListener("resize", handler); }
+  }, []);
 
   useEffect(() => {
     setCurrent(answers[s?.key] || "");
@@ -263,11 +275,20 @@ function PublicForm({ onSubmit }) {
           )}
 
           {error && <span style={{ color:"#FF8A80", fontSize:13, marginTop:8, display:"block" }}>This one's required — we need it to help you.</span>}
+
+          {/* Return key hint — shows when keyboard is up on text steps */}
+          {kbVisible && s.type === "text" && !error && (
+            <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:14 }}>
+              <span style={{ fontSize:12, color:"rgba(255,255,255,0.35)" }}>Press</span>
+              <span style={{ fontSize:11, color:"rgba(255,255,255,0.55)", background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:5, padding:"2px 8px", fontWeight:600, letterSpacing:"0.02em" }}>Return</span>
+              <span style={{ fontSize:12, color:"rgba(255,255,255,0.35)" }}>to continue</span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Sticky footer — always visible above keyboard */}
-      <div style={{ flexShrink:0, padding:"12px 24px 32px", background:"transparent" }}>
+      {/* Sticky footer — hidden on text steps when keyboard is up */}
+      <div style={{ flexShrink:0, padding:"12px 24px 32px", background:"transparent", transition:"opacity 0.2s ease", opacity: kbVisible && s.type === "text" ? 0 : 1, pointerEvents: kbVisible && s.type === "text" ? "none" : "auto" }}>
         <div style={{ display:"flex", gap:10 }}>
           {!s.required && (
             <button onClick={skip} style={{ padding:"15px 20px", background:"rgba(255,255,255,0.07)", color:"rgba(255,255,255,0.5)", border:"1.5px solid rgba(255,255,255,0.1)", borderRadius:14, fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>Skip</button>

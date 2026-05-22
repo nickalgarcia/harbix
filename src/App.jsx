@@ -1,459 +1,499 @@
 import { useState, useRef, useEffect } from "react";
 
-// ── Brand tokens ──────────────────────────────────────────────
+// ── Brand ─────────────────────────────────────────────────────
 const B = {
-  orange:     "#EF6423",
-  orangeHov:  "#D4561E",
-  navy:       "#4E4D5F",
-  navyDark:   "#3B3A4A",
-  deep:       "#20101B",
-  white:      "#FFFFFF",
-  offWhite:   "#F7F6F4",
-  border:     "#E8E6E1",
-  muted:      "#9B9691",
-  text:       "#1C1B22",
-  textSub:    "#6B6772",
-  green:      "#10B981",
-  greenBg:    "#D1FAE5",
-  greenText:  "#065F46",
-  yellow:     "#F59E0B",
-  yellowBg:   "#FEF3C7",
-  yellowText: "#92400E",
-  blue:       "#3B82F6",
-  blueBg:     "#DBEAFE",
-  blueText:   "#1E40AF",
-  red:        "#EF4444",
-  redBg:      "#FEE2E2",
-  redText:    "#991B1B",
+  orange:      "#EF6423",
+  orangeHov:   "#D4561E",
+  orangeLight: "#FFF4EF",
+  navy:        "#4E4D5F",
+  navyDark:    "#3B3A4A",
+  deep:        "#20101B",
+  white:       "#FFFFFF",
+  offWhite:    "#F8F7F5",
+  cream:       "#F2F0EC",
+  border:      "#E8E4DE",
+  muted:       "#A09A94",
+  text:        "#1C1B22",
+  textSub:     "#6E6A72",
+  green:       "#10B981",
+  greenBg:     "#D1FAE5",
+  greenText:   "#065F46",
+  blue:        "#3B82F6",
+  blueBg:      "#DBEAFE",
+  blueText:    "#1E40AF",
+  red:         "#EF4444",
+  redBg:       "#FEE2E2",
+  redText:     "#991B1B",
+  amber:       "#F59E0B",
+  amberBg:     "#FEF3C7",
+  amberText:   "#92400E",
 };
 
 const STATUS = {
-  open:        { label: "Open",        bg: B.yellowBg,  text: B.yellowText, dot: B.yellow  },
-  "in-progress":{ label: "In Progress", bg: B.blueBg,    text: B.blueText,  dot: B.blue    },
-  resolved:    { label: "Resolved",    bg: B.greenBg,   text: B.greenText, dot: B.green   },
-  closed:      { label: "Closed",      bg: "#F3F4F6",   text: "#6B7280",   dot: "#9CA3AF" },
+  waiting:  { label: "Waiting",  bg: B.amberBg,  text: B.amberText, dot: B.amber },
+  "on-it":  { label: "On It",    bg: B.blueBg,   text: B.blueText,  dot: B.blue  },
+  done:     { label: "Done",     bg: B.greenBg,  text: B.greenText, dot: B.green },
+  closed:   { label: "Closed",   bg: B.cream,    text: B.muted,     dot: B.muted },
 };
 
-const TEAM = ["Nick Garcia", "James Okafor", "Maria Santos", "Derek Hill"];
-
-const MOCK_TICKETS = [
-  { id:"t1", name:"Lisa Tran", contact:"lisa@gcc.org", location:"Main Sanctuary", issue:"Wireless mic pack #3 cuts out during worship set — happens every Sunday.", status:"open", assignee:"", photo:null, comments:[], createdAt: new Date(Date.now()-3600000*2).toISOString(), updatedAt: new Date(Date.now()-3600000*2).toISOString() },
-  { id:"t2", name:"Marcus Webb", contact:"210-555-0122", location:"Youth Room", issue:"HDMI cable for the projector is missing. Can't connect laptop for Wednesday night.", status:"in-progress", assignee:"Nick Garcia", photo:null, comments:[{ id:"c1", author:"Nick Garcia", text:"Checked the storage closet — cable isn't there. Ordering a replacement today.", type:"internal", ts: new Date(Date.now()-3600000*20).toISOString() }], createdAt: new Date(Date.now()-3600000*26).toISOString(), updatedAt: new Date(Date.now()-3600000*20).toISOString() },
-  { id:"t3", name:"Pastor Donte Banks", contact:"pd@godchasers.org", location:"Lobby", issue:"TV display near the entrance is frozen on a slide from two weeks ago.", status:"resolved", assignee:"James Okafor", photo:null, comments:[{ id:"c2", author:"James Okafor", text:"Fixed — TV was stuck in a loop. Rebooted the media player and pushed a fresh slide.", type:"reply", ts: new Date(Date.now()-3600000*45).toISOString() }], createdAt: new Date(Date.now()-3600000*50).toISOString(), updatedAt: new Date(Date.now()-3600000*45).toISOString() },
+const MOCK_AGENTS = [
+  { id: "a1", name: "Nick Garcia",   email: "nick@godchasers.church",  avatar: "NG" },
+  { id: "a2", name: "Pastor Donte",  email: "pd@godchasers.church",    avatar: "PD" },
+  { id: "a3", name: "James Okafor",  email: "james@godchasers.church", avatar: "JO" },
 ];
 
-// ── Helpers ──────────────────────────────────────────────────
+const MOCK_TICKETS = [
+  { id:"t1", name:"Lisa Tran",        contact:"lisa@gcc.org",         location:"Main Sanctuary", issue:"Wireless mic pack #3 cuts out during worship — happens every Sunday morning.", status:"waiting",  claimedBy:null,           photo:null, comments:[], createdAt:new Date(Date.now()-3600000*1).toISOString(),  updatedAt:new Date(Date.now()-3600000*1).toISOString()  },
+  { id:"t2", name:"Marcus Webb",      contact:"210-555-0122",          location:"Youth Room",     issue:"HDMI cable for the projector is missing. Need it for Wednesday night service.", status:"on-it",   claimedBy:MOCK_AGENTS[0], photo:null, comments:[{ id:"c1", author:"Nick Garcia", avatar:"NG", text:"Ordered a replacement — arrives Tuesday.", type:"internal", ts:new Date(Date.now()-3600000*3).toISOString() }], createdAt:new Date(Date.now()-3600000*26).toISOString(), updatedAt:new Date(Date.now()-3600000*3).toISOString()  },
+  { id:"t3", name:"Tabitha Banks",    contact:"tb@godchasers.church", location:"Lobby",          issue:"TV display near the entrance is showing a slide from two weeks ago.",          status:"done",    claimedBy:MOCK_AGENTS[2], photo:null, comments:[{ id:"c2", author:"James Okafor", avatar:"JO", text:"Fixed — rebooted the media player and pushed a fresh slide.", type:"reply", ts:new Date(Date.now()-3600000*10).toISOString() }], createdAt:new Date(Date.now()-3600000*50).toISOString(), updatedAt:new Date(Date.now()-3600000*10).toISOString() },
+  { id:"t4", name:"Deacon Ray Smith", contact:"ray@gcc.org",          location:"Overflow Room",  issue:"Sound is cutting in and out from the overflow speakers during service.",        status:"waiting", claimedBy:null,           photo:null, comments:[], createdAt:new Date(Date.now()-3600000*4).toISOString(),  updatedAt:new Date(Date.now()-3600000*4).toISOString()  },
+];
+
+const STEPS = [
+  { key:"name",     question:"Hey! What's your name?",                  placeholder:"Type your name…",                        type:"text",     required:true  },
+  { key:"location", question:"Where's the issue happening?",            placeholder:"Main Sanctuary, Youth Room, Lobby…",      type:"text",     required:true  },
+  { key:"issue",    question:"Tell us what's going on.",                placeholder:"Describe what's happening — any detail helps…", type:"textarea", required:true  },
+  { key:"contact",  question:"How can we reach you?",                   placeholder:"Email or phone number",                   type:"text",     required:false },
+  { key:"photo",    question:"Got a photo or screenshot?",              placeholder:"",                                        type:"photo",    required:false },
+];
+
+// ── Helpers ───────────────────────────────────────────────────
 function timeAgo(iso) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff/60000);
+  const d = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(d / 60000);
   if (m < 1) return "just now";
   if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m/60);
+  const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h/24)}d ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 function uid() { return "t" + Date.now() + Math.random().toString(36).slice(2,6); }
 
-// ── Shared UI ────────────────────────────────────────────────
-function StatusBadge({ status }) {
-  const s = STATUS[status] || STATUS.open;
+// ── Shared components ─────────────────────────────────────────
+function HarbixLogo({ dark=false, size="md" }) {
+  const sz = { sm:15, md:18, lg:26 }[size];
   return (
-    <span style={{ display:"inline-flex", alignItems:"center", gap:5, padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:700, letterSpacing:"0.03em", background:s.bg, color:s.text }}>
+    <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+      <span style={{ fontSize:sz+2, fontWeight:900, color:B.orange, fontFamily:"Georgia,serif", fontStyle:"italic", lineHeight:1 }}>»</span>
+      <span style={{ fontSize:sz, fontWeight:800, color:dark?B.white:B.text, letterSpacing:"-0.04em", fontFamily:"'DM Sans',system-ui,sans-serif" }}>Harbix</span>
+    </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  const s = STATUS[status] || STATUS.waiting;
+  return (
+    <span style={{ display:"inline-flex", alignItems:"center", gap:5, padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:700, letterSpacing:"0.03em", background:s.bg, color:s.text, whiteSpace:"nowrap" }}>
       <span style={{ width:6, height:6, borderRadius:"50%", background:s.dot, flexShrink:0 }} />
       {s.label}
     </span>
   );
 }
 
-function Avatar({ name, size=28 }) {
-  const initials = name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+function Avatar({ initials, size=32, color=B.navy }) {
   return (
-    <span style={{ width:size, height:size, borderRadius:"50%", background:B.navy, color:B.white, display:"inline-flex", alignItems:"center", justifyContent:"center", fontSize:size*0.36, fontWeight:700, flexShrink:0, fontFamily:"'DM Sans', sans-serif" }}>
+    <div style={{ width:size, height:size, borderRadius:"50%", background:color, color:B.white, display:"flex", alignItems:"center", justifyContent:"center", fontSize:size*0.35, fontWeight:800, flexShrink:0, fontFamily:"'DM Sans',sans-serif" }}>
       {initials}
+    </div>
+  );
+}
+
+function Chip({ icon, children }) {
+  return (
+    <span style={{ display:"inline-flex", alignItems:"center", gap:4, fontSize:11, color:B.textSub, background:B.cream, padding:"3px 9px", borderRadius:6, border:`1px solid ${B.border}`, whiteSpace:"nowrap" }}>
+      {icon}<span>{children}</span>
     </span>
   );
 }
 
-function PhotoUpload({ photo, onChange }) {
-  const inputRef = useRef();
-  const [drag, setDrag] = useState(false);
-  const handleFile = (file) => {
-    if (!file || !file.type.startsWith("image/")) return;
-    const r = new FileReader();
-    r.onload = e => onChange(e.target.result);
-    r.readAsDataURL(file);
-  };
+function DarkScreen({ children }) {
   return (
-    <div style={{ marginBottom:18 }}>
-      <label style={S.label}>Photo or Screenshot <span style={{ fontWeight:400, color:B.muted, fontSize:11 }}>Optional</span></label>
-      {photo ? (
-        <div style={{ position:"relative" }}>
-          <img src={photo} alt="preview" style={{ width:"100%", maxHeight:200, objectFit:"cover", borderRadius:10, border:`1.5px solid ${B.border}`, display:"block" }} />
-          <button style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.6)", color:"#fff", border:"none", borderRadius:6, padding:"4px 10px", fontSize:12, cursor:"pointer", fontWeight:600 }} onClick={()=>onChange(null)}>✕ Remove</button>
-        </div>
-      ) : (
-        <div
-          style={{ border:`2px dashed ${drag?B.orange:B.border}`, borderRadius:10, padding:"22px 16px", textAlign:"center", cursor:"pointer", background:drag?"#FFF4EF":B.offWhite, display:"flex", flexDirection:"column", alignItems:"center", gap:5, transition:"all 0.15s" }}
-          onDragOver={e=>{e.preventDefault();setDrag(true)}}
-          onDragLeave={()=>setDrag(false)}
-          onDrop={e=>{e.preventDefault();setDrag(false);handleFile(e.dataTransfer.files[0])}}
-          onClick={()=>inputRef.current.click()}
-        >
-          <span style={{ fontSize:22 }}>📎</span>
-          <span style={{ fontSize:13, color:B.textSub }}>Drag & drop or <span style={{ color:B.orange, fontWeight:600, textDecoration:"underline" }}>browse</span></span>
-          <span style={{ fontSize:11, color:B.muted }}>PNG, JPG, GIF, WEBP</span>
-          <input ref={inputRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>handleFile(e.target.files[0])} />
-        </div>
-      )}
+    <div style={{ minHeight:"100vh", background:`linear-gradient(160deg,${B.deep} 0%,${B.navy} 100%)`, display:"flex", flexDirection:"column", fontFamily:"'DM Sans',system-ui,sans-serif" }}>
+      <div style={{ padding:"16px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
+        <HarbixLogo dark />
+        <span style={{ fontSize:11, color:"rgba(255,255,255,0.3)", fontWeight:600, letterSpacing:"0.06em", textTransform:"uppercase" }}>GodChasers Church</span>
+      </div>
+      {children}
     </div>
   );
 }
 
-// ── Public Form ──────────────────────────────────────────────
+// ── Conversational Public Form ────────────────────────────────
 function PublicForm({ onSubmit }) {
-  const [form, setForm] = useState({ name:"", contact:"", location:"", issue:"" });
-  const [photo, setPhoto] = useState(null);
-  const [errors, setErrors] = useState({});
+  const [step, setStep]       = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [current, setCurrent] = useState("");
+  const [photo, setPhoto]     = useState(null);
+  const [error, setError]     = useState(false);
   const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
+  const [anim, setAnim]       = useState(false);
+  const [dir, setDir]         = useState("forward");
+  const [done, setDone]       = useState(false);
+  const inputRef = useRef();
+  const photoRef = useRef();
+  const s = STEPS[step];
 
-  const validate = () => {
-    const e = {};
-    if (!form.name) e.name=true;
-    if (!form.contact) e.contact=true;
-    if (!form.location) e.location=true;
-    if (!form.issue) e.issue=true;
-    setErrors(e);
-    return !Object.keys(e).length;
+  useEffect(() => {
+    setCurrent(answers[s?.key] || "");
+    setError(false);
+    if (s?.type !== "photo") setTimeout(() => inputRef.current?.focus(), 300);
+  }, [step]);
+
+  const go = (delta) => {
+    setDir(delta > 0 ? "forward" : "back");
+    setAnim(true);
+    setTimeout(() => { setStep(st => st + delta); setAnim(false); }, 200);
   };
 
-  const handleSubmit = async () => {
-    if (!validate()) return;
+  const advance = async () => {
+    if (s.required && s.type !== "photo" && !current.trim()) {
+      setError(true); return;
+    }
+    const updated = s.type !== "photo" ? { ...answers, [s.key]: current } : answers;
+    setAnswers(updated);
+    if (step < STEPS.length - 1) { go(1); return; }
     setLoading(true);
-    await new Promise(r=>setTimeout(r,900));
-    onSubmit({ id:uid(), ...form, photo, status:"open", assignee:"", comments:[], createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() });
+    await new Promise(r => setTimeout(r, 1000));
+    onSubmit({ id:uid(), ...updated, photo, status:"waiting", claimedBy:null, comments:[], createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() });
     setLoading(false);
     setDone(true);
   };
 
+  const skip = () => {
+    const updated = { ...answers };
+    setAnswers(updated);
+    if (step < STEPS.length - 1) go(1);
+    else advance();
+  };
+
+  const handleFile = f => {
+    if (!f || !f.type.startsWith("image/")) return;
+    const r = new FileReader();
+    r.onload = e => setPhoto(e.target.result);
+    r.readAsDataURL(f);
+  };
+
   if (done) return (
-    <div style={{ minHeight:"100vh", background:B.deep, display:"flex", alignItems:"center", justifyContent:"center", padding:24, fontFamily:"'DM Sans', sans-serif" }}>
-      <div style={{ background:B.white, borderRadius:20, padding:"48px 40px", maxWidth:440, width:"100%", textAlign:"center", boxShadow:"0 20px 60px rgba(0,0,0,0.25)" }}>
-        <div style={{ width:64, height:64, borderRadius:"50%", background:B.greenBg, color:B.green, fontSize:28, display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 20px" }}>✓</div>
-        <h2 style={{ margin:"0 0 8px", fontSize:22, fontWeight:700, color:B.text }}>Ticket Submitted</h2>
-        <p style={{ color:B.textSub, fontSize:14, margin:"0 0 28px", lineHeight:1.6 }}>We've got it. Our AV team will look into it and follow up with you shortly.</p>
-        <button style={S.btnOrange} onClick={()=>{setDone(false);setForm({name:"",contact:"",location:"",issue:""});setPhoto(null)}}>Submit Another</button>
+    <DarkScreen>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"40px 24px", textAlign:"center" }}>
+        <div style={{ width:80, height:80, borderRadius:"50%", background:"rgba(16,185,129,0.15)", border:"2px solid rgba(16,185,129,0.35)", color:B.green, fontSize:36, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28 }}>✓</div>
+        <h2 style={{ margin:"0 0 12px", fontSize:28, fontWeight:800, color:B.white, letterSpacing:"-0.04em" }}>
+          Got it{answers.name ? `, ${answers.name.split(" ")[0]}` : ""}!
+        </h2>
+        <p style={{ color:"rgba(255,255,255,0.5)", fontSize:16, lineHeight:1.7, maxWidth:300, margin:"0 auto 36px" }}>
+          Someone from the AV team will follow up with you{answers.contact ? ` at ${answers.contact}` : ""} as soon as possible.
+        </p>
+        <button onClick={() => { setDone(false); setStep(0); setAnswers({}); setPhoto(null); setCurrent(""); }} style={{ background:"rgba(255,255,255,0.1)", color:"rgba(255,255,255,0.7)", border:"1.5px solid rgba(255,255,255,0.15)", borderRadius:12, padding:"13px 28px", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+          Submit another issue
+        </button>
       </div>
-    </div>
+    </DarkScreen>
   );
 
+  const progress = (step / STEPS.length) * 100;
+  const slideStyle = { opacity:anim?0:1, transform:anim?`translateX(${dir==="forward"?"28px":"-28px"})`:"translateX(0)", transition:"opacity 0.2s ease,transform 0.2s ease" };
+
   return (
-    <div style={{ minHeight:"100vh", background:B.deep, display:"flex", flexDirection:"column", fontFamily:"'DM Sans', sans-serif" }}>
-      {/* Header */}
-      <div style={{ background:B.navy, padding:"0 24px", height:56, display:"flex", alignItems:"center", justifyContent:"space-between", borderBottom:`1px solid rgba(255,255,255,0.08)` }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <span style={{ fontSize:20 }}>⚓</span>
-          <span style={{ fontWeight:800, fontSize:17, color:B.white, letterSpacing:"-0.3px" }}>Harbix</span>
-          <span style={{ fontSize:11, color:B.orange, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", marginLeft:4 }}>by GodChasers</span>
-        </div>
+    <DarkScreen>
+      {/* Progress */}
+      <div style={{ height:3, background:"rgba(255,255,255,0.08)", flexShrink:0 }}>
+        <div style={{ height:"100%", background:B.orange, width:`${progress}%`, transition:"width 0.4s ease", borderRadius:"0 2px 2px 0" }} />
       </div>
-      {/* Form */}
-      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:"40px 16px" }}>
-        <div style={{ background:B.white, borderRadius:20, padding:"36px 32px", width:"100%", maxWidth:520, boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
-          <div style={{ marginBottom:28 }}>
-            <h1 style={{ margin:"0 0 6px", fontSize:24, fontWeight:800, color:B.text, letterSpacing:"-0.5px" }}>Submit a Support Request</h1>
-            <p style={{ margin:0, fontSize:14, color:B.textSub, lineHeight:1.5 }}>Having an AV issue? Fill this out and our team will take care of it.</p>
-          </div>
-          <Field label="Your Name" error={errors.name}>
-            <input style={S.input(errors.name)} name="name" value={form.name} placeholder="First and last name" onChange={e=>{ setForm({...form,name:e.target.value}); setErrors({...errors,name:false}); }} />
-          </Field>
-          <Field label="Contact Info" error={errors.contact}>
-            <input style={S.input(errors.contact)} name="contact" value={form.contact} placeholder="Email or phone number" onChange={e=>{ setForm({...form,contact:e.target.value}); setErrors({...errors,contact:false}); }} />
-          </Field>
-          <Field label="Location" error={errors.location}>
-            <input style={S.input(errors.location)} name="location" value={form.location} placeholder="e.g. Main Sanctuary, Youth Room, Lobby" onChange={e=>{ setForm({...form,location:e.target.value}); setErrors({...errors,location:false}); }} />
-          </Field>
-          <Field label="Describe the Issue" error={errors.issue}>
-            <textarea style={{ ...S.input(errors.issue), resize:"vertical", fontFamily:"inherit", minHeight:100 }} value={form.issue} placeholder="What's happening? Be as specific as you can." onChange={e=>{ setForm({...form,issue:e.target.value}); setErrors({...errors,issue:false}); }} rows={4} />
-          </Field>
-          <PhotoUpload photo={photo} onChange={setPhoto} />
-          <button style={{ ...S.btnOrange, width:"100%", opacity:loading?0.7:1, fontSize:15, padding:"13px 0" }} onClick={handleSubmit} disabled={loading}>
-            {loading ? "Submitting…" : "Submit Request"}
+
+      <div style={{ flex:1, display:"flex", flexDirection:"column", padding:"28px 24px 40px" }}>
+        {/* Top row */}
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:44, flexShrink:0 }}>
+          {step > 0 && (
+            <button onClick={() => go(-1)} style={{ width:34, height:34, background:"rgba(255,255,255,0.1)", border:"none", borderRadius:"50%", color:"rgba(255,255,255,0.7)", fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
+          )}
+          <span style={{ fontSize:12, color:"rgba(255,255,255,0.35)", fontWeight:600, letterSpacing:"0.06em" }}>{step+1} of {STEPS.length}</span>
+        </div>
+
+        {/* Question */}
+        <div style={{ flex:1, display:"flex", flexDirection:"column", justifyContent:"center", ...slideStyle }}>
+          <h2 style={{ margin:"0 0 6px", fontSize:28, fontWeight:800, color:B.white, letterSpacing:"-0.04em", lineHeight:1.25 }}>{s.question}</h2>
+          {!s.required && <p style={{ margin:"0 0 28px", fontSize:14, color:"rgba(255,255,255,0.38)" }}>Optional — tap Skip to continue</p>}
+          {s.required && <div style={{ marginBottom:28 }} />}
+
+          {s.type === "text" && (
+            <input ref={inputRef} value={current} onChange={e=>{setCurrent(e.target.value);setError(false);}} onKeyDown={e=>e.key==="Enter"&&advance()} placeholder={s.placeholder}
+              style={{ background:"rgba(255,255,255,0.09)", border:`1.5px solid ${error?"#FF6B6B":"rgba(255,255,255,0.18)"}`, borderRadius:14, padding:"16px 18px", fontSize:18, color:B.white, outline:"none", fontFamily:"inherit", WebkitAppearance:"none", caretColor:B.orange }} />
+          )}
+
+          {s.type === "textarea" && (
+            <textarea ref={inputRef} value={current} onChange={e=>{setCurrent(e.target.value);setError(false);}} placeholder={s.placeholder} rows={4}
+              style={{ background:"rgba(255,255,255,0.09)", border:`1.5px solid ${error?"#FF6B6B":"rgba(255,255,255,0.18)"}`, borderRadius:14, padding:"16px 18px", fontSize:16, color:B.white, outline:"none", fontFamily:"inherit", resize:"none", minHeight:130, caretColor:B.orange }} />
+          )}
+
+          {s.type === "photo" && (
+            photo ? (
+              <div style={{ position:"relative" }}>
+                <img src={photo} alt="preview" style={{ width:"100%", maxHeight:220, objectFit:"cover", borderRadius:14, border:"1.5px solid rgba(255,255,255,0.15)", display:"block" }} />
+                <button style={{ position:"absolute", top:10, right:10, background:"rgba(0,0,0,0.65)", color:"#fff", border:"none", borderRadius:6, padding:"4px 10px", fontSize:12, cursor:"pointer", fontWeight:700 }} onClick={()=>setPhoto(null)}>✕</button>
+              </div>
+            ) : (
+              <div onClick={()=>photoRef.current.click()} style={{ border:"2px dashed rgba(255,255,255,0.18)", borderRadius:14, padding:"36px 20px", textAlign:"center", cursor:"pointer", background:"rgba(255,255,255,0.05)", display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
+                <span style={{ fontSize:40 }}>📷</span>
+                <span style={{ fontSize:15, color:"rgba(255,255,255,0.7)", fontWeight:600 }}>Tap to add a photo</span>
+                <span style={{ fontSize:12, color:"rgba(255,255,255,0.35)" }}>PNG, JPG, WEBP</span>
+                <input ref={photoRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>handleFile(e.target.files[0])} />
+              </div>
+            )
+          )}
+
+          {error && <span style={{ color:"#FF8A80", fontSize:13, marginTop:8, display:"block" }}>This one's required — we need it to help you.</span>}
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display:"flex", gap:10, marginTop:32, flexShrink:0 }}>
+          {!s.required && (
+            <button onClick={skip} style={{ padding:"15px 20px", background:"rgba(255,255,255,0.07)", color:"rgba(255,255,255,0.5)", border:"1.5px solid rgba(255,255,255,0.1)", borderRadius:14, fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>Skip</button>
+          )}
+          <button onClick={advance} disabled={loading} style={{ flex:1, background:B.orange, color:B.white, border:"none", borderRadius:14, padding:"16px 0", fontSize:17, fontWeight:800, cursor:loading?"default":"pointer", fontFamily:"inherit", opacity:loading?0.8:1 }}>
+            {loading ? "Sending…" : step===STEPS.length-1 ? "Submit »" : "Next »"}
           </button>
         </div>
       </div>
-    </div>
+    </DarkScreen>
   );
 }
 
-function Field({ label, error, children }) {
-  return (
-    <div style={{ marginBottom:18 }}>
-      <label style={S.label}>{label}</label>
-      {children}
-      {error && <span style={{ color:B.red, fontSize:11, marginTop:3, display:"block" }}>This field is required</span>}
-    </div>
-  );
-}
-
-// ── Agent Login ───────────────────────────────────────────────
-function AgentLogin({ onLogin }) {
-  const [pw, setPw] = useState("");
+// ── Google Login ──────────────────────────────────────────────
+function GoogleLogin({ onLogin }) {
+  const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(false);
-  const attempt = () => {
-    if (pw === "harbix2024") { onLogin(); }
-    else { setErr(true); setTimeout(()=>setErr(false), 2000); }
+
+  const mockLogin = async () => {
+    setLoading(true); setErr(false);
+    await new Promise(r => setTimeout(r, 1200));
+    onLogin(MOCK_AGENTS[0]);
+    setLoading(false);
   };
+
   return (
-    <div style={{ minHeight:"100vh", background:B.deep, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'DM Sans', sans-serif" }}>
-      <div style={{ background:B.white, borderRadius:20, padding:"48px 40px", maxWidth:380, width:"100%", textAlign:"center", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
-        <div style={{ fontSize:36, marginBottom:16 }}>⚓</div>
-        <h2 style={{ margin:"0 0 4px", fontSize:22, fontWeight:800, color:B.text }}>Harbix</h2>
-        <p style={{ color:B.textSub, fontSize:13, margin:"0 0 28px" }}>Agent portal — GodChasers AV Team</p>
-        <input
-          type="password" value={pw} placeholder="Enter password"
-          style={{ ...S.input(err), textAlign:"center", marginBottom:8 }}
-          onChange={e=>setPw(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&attempt()}
-        />
-        {err && <p style={{ color:B.red, fontSize:12, margin:"0 0 12px" }}>Incorrect password</p>}
-        <button style={{ ...S.btnOrange, width:"100%" }} onClick={attempt}>Sign In</button>
-        <p style={{ marginTop:16, fontSize:12, color:B.muted }}>(Demo password: harbix2024)</p>
+    <div style={{ minHeight:"100vh", background:`linear-gradient(160deg,${B.deep} 0%,${B.navy} 100%)`, display:"flex", alignItems:"center", justifyContent:"center", padding:24, fontFamily:"'DM Sans',system-ui,sans-serif" }}>
+      <div style={{ background:B.white, borderRadius:24, padding:"40px 32px", width:"100%", maxWidth:380, textAlign:"center", boxShadow:"0 20px 60px rgba(0,0,0,0.35)" }}>
+        <HarbixLogo size="lg" />
+        <p style={{ color:B.textSub, fontSize:13, margin:"8px 0 28px", lineHeight:1.5 }}>Agent portal · GodChasers AV Team</p>
+        <div style={{ background:B.offWhite, borderRadius:14, padding:"14px 16px", marginBottom:24, border:`1px solid ${B.border}` }}>
+          <div style={{ fontSize:13, color:B.textSub, lineHeight:1.6 }}>
+            Sign in with your <strong style={{ color:B.text }}>@godchasers.church</strong> Google account to access the agent portal.
+          </div>
+        </div>
+        {err && (
+          <div style={{ background:B.redBg, border:`1px solid ${B.red}`, borderRadius:10, padding:"10px 14px", marginBottom:16, fontSize:13, color:B.redText }}>
+            Access restricted to @godchasers.church accounts only.
+          </div>
+        )}
+        <button onClick={mockLogin} disabled={loading} style={{ width:"100%", padding:"13px 20px", borderRadius:12, border:`1.5px solid ${B.border}`, background:B.white, cursor:loading?"default":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10, fontSize:14, fontWeight:700, color:B.text, fontFamily:"inherit", opacity:loading?0.7:1, boxShadow:"0 1px 4px rgba(0,0,0,0.08)" }}>
+          <svg width="18" height="18" viewBox="0 0 48 48">
+            <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.2l6.8-6.8C35.8 2.3 30.2 0 24 0 14.6 0 6.6 5.4 2.6 13.3l7.9 6.1C12.4 13.2 17.7 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/>
+            <path fill="#FBBC05" d="M10.5 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.1.8-4.6l-7.9-6.1A23.9 23.9 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l7.9-6.1z"/>
+            <path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.2-7.7 2.2-6.3 0-11.6-3.7-13.5-9.1l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/>
+          </svg>
+          {loading ? "Signing in…" : "Continue with Google"}
+        </button>
+        <p style={{ marginTop:18, fontSize:11, color:B.muted, lineHeight:1.5 }}>Only @godchasers.church accounts can access this portal.</p>
+        <p style={{ marginTop:8, fontSize:11, color:B.muted }}>(Demo: click the button to sign in)</p>
       </div>
     </div>
   );
 }
 
 // ── Ticket Card ───────────────────────────────────────────────
-function TicketCard({ ticket, onClick }) {
-  const hasPhoto = !!ticket.photo;
+function TicketCard({ ticket, agent, onClaim, onUnclaim, onClick }) {
+  const isMine     = ticket.claimedBy?.id === agent?.id;
+  const isUnclaimed = !ticket.claimedBy;
   return (
-    <div onClick={onClick} style={{ background:B.white, border:`1px solid ${B.border}`, borderRadius:14, padding:20, cursor:"pointer", transition:"all 0.15s", boxShadow:"0 1px 3px rgba(0,0,0,0.05)" }}
-      onMouseEnter={e=>{ e.currentTarget.style.borderColor=B.orange; e.currentTarget.style.boxShadow=`0 4px 16px rgba(239,100,35,0.12)`; }}
-      onMouseLeave={e=>{ e.currentTarget.style.borderColor=B.border; e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.05)"; }}
-    >
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <Avatar name={ticket.name} size={30} />
-          <div>
-            <div style={{ fontWeight:700, fontSize:14, color:B.text }}>{ticket.name}</div>
-            <div style={{ fontSize:11, color:B.muted }}>{timeAgo(ticket.createdAt)}</div>
+    <div style={{ background:B.white, border:`1px solid ${B.border}`, borderRadius:16, overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,0.05)" }}>
+      <div onClick={onClick} style={{ padding:"16px 16px 12px", cursor:"pointer" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:9 }}>
+            <Avatar initials={ticket.name.split(" ").map(w=>w[0]).join("").slice(0,2)} size={34} />
+            <div>
+              <div style={{ fontWeight:700, fontSize:14, color:B.text, lineHeight:1.2 }}>{ticket.name}</div>
+              <div style={{ fontSize:11, color:B.muted, marginTop:2 }}>{timeAgo(ticket.createdAt)}</div>
+            </div>
           </div>
+          <StatusBadge status={ticket.status} />
         </div>
-        <StatusBadge status={ticket.status} />
+        <div style={{ display:"flex", gap:5, marginBottom:10, flexWrap:"wrap" }}>
+          <Chip icon="📍">{ticket.location}</Chip>
+          {ticket.photo && <Chip icon="📷">Photo</Chip>}
+          {ticket.comments.length>0 && <Chip icon="💬">{ticket.comments.length}</Chip>}
+          {ticket.claimedBy && <Chip icon="👤">{ticket.claimedBy.name.split(" ")[0]}</Chip>}
+        </div>
+        <p style={{ margin:0, fontSize:13, color:B.textSub, lineHeight:1.55, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>{ticket.issue}</p>
       </div>
-      <div style={{ display:"flex", gap:6, marginBottom:10, flexWrap:"wrap" }}>
-        <Chip>📍 {ticket.location}</Chip>
-        {ticket.assignee && <Chip>👤 {ticket.assignee.split(" ")[0]}</Chip>}
-        {hasPhoto && <Chip>📷 Photo</Chip>}
-        {ticket.comments.length > 0 && <Chip>💬 {ticket.comments.length}</Chip>}
-      </div>
-      <p style={{ margin:0, fontSize:13, color:B.textSub, lineHeight:1.5, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>{ticket.issue}</p>
+      {ticket.status !== "closed" && (
+        <div style={{ borderTop:`1px solid ${B.border}`, padding:"10px 14px", background:B.offWhite, display:"flex", gap:8 }}>
+          {isUnclaimed && ticket.status==="waiting" && (
+            <button onClick={e=>{e.stopPropagation();onClaim(ticket.id);}} style={{ ...BTN.orangeSolid, flex:1, fontSize:13, padding:"9px 0", borderRadius:10 }}>» Claim Ticket</button>
+          )}
+          {isMine && ticket.status==="on-it" && (
+            <>
+              <button onClick={e=>{e.stopPropagation();onUnclaim(ticket.id);}} style={{ ...BTN.ghost, fontSize:12, padding:"8px 12px", borderRadius:10 }}>Release</button>
+              <button onClick={onClick} style={{ ...BTN.orangeSolid, flex:1, fontSize:13, padding:"9px 0", borderRadius:10 }}>View & Update →</button>
+            </>
+          )}
+          {!isMine && ticket.claimedBy && (
+            <span style={{ fontSize:12, color:B.muted, padding:"8px 0" }}>Claimed by {ticket.claimedBy.name.split(" ")[0]}</span>
+          )}
+          {ticket.status==="done" && (
+            <button onClick={onClick} style={{ ...BTN.ghost, flex:1, fontSize:13, padding:"9px 0", borderRadius:10 }}>View Details</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function TicketRow({ ticket, onClick }) {
+function TicketRow({ ticket, agent, onClaim, onUnclaim, onClick }) {
+  const isMine      = ticket.claimedBy?.id === agent?.id;
+  const isUnclaimed = !ticket.claimedBy;
   return (
-    <div onClick={onClick} style={{ background:B.white, border:`1px solid ${B.border}`, borderRadius:10, padding:"14px 18px", cursor:"pointer", display:"flex", alignItems:"center", gap:14, transition:"all 0.15s" }}
-      onMouseEnter={e=>{ e.currentTarget.style.borderColor=B.orange; }}
-      onMouseLeave={e=>{ e.currentTarget.style.borderColor=B.border; }}
-    >
-      <Avatar name={ticket.name} size={32} />
-      <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
+    <div style={{ background:B.white, border:`1px solid ${B.border}`, borderRadius:12, padding:"13px 16px", display:"flex", alignItems:"center", gap:12 }}>
+      <Avatar initials={ticket.name.split(" ").map(w=>w[0]).join("").slice(0,2)} size={36} />
+      <div style={{ flex:1, minWidth:0, cursor:"pointer" }} onClick={onClick}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3, flexWrap:"wrap" }}>
           <span style={{ fontWeight:700, fontSize:14, color:B.text }}>{ticket.name}</span>
-          <span style={{ fontSize:11, color:B.muted }}>·</span>
-          <span style={{ fontSize:11, color:B.muted }}>📍 {ticket.location}</span>
+          <Chip icon="📍">{ticket.location}</Chip>
         </div>
         <p style={{ margin:0, fontSize:12, color:B.textSub, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{ticket.issue}</p>
       </div>
-      <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
-        {ticket.assignee && <span style={{ fontSize:11, color:B.textSub }}>{ticket.assignee.split(" ")[0]}</span>}
+      <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
         <StatusBadge status={ticket.status} />
-        <span style={{ fontSize:11, color:B.muted }}>{timeAgo(ticket.createdAt)}</span>
+        {isUnclaimed && ticket.status==="waiting" && (
+          <button onClick={e=>{e.stopPropagation();onClaim(ticket.id);}} style={{ ...BTN.orangeSolid, fontSize:12, padding:"6px 12px", borderRadius:8 }}>Claim</button>
+        )}
+        {isMine && (
+          <button onClick={e=>{e.stopPropagation();onUnclaim(ticket.id);}} style={{ ...BTN.ghost, fontSize:12, padding:"6px 10px", borderRadius:8 }}>Release</button>
+        )}
       </div>
     </div>
   );
-}
-
-function Chip({ children }) {
-  return <span style={{ fontSize:11, color:B.textSub, background:B.offWhite, padding:"3px 9px", borderRadius:6, border:`1px solid ${B.border}` }}>{children}</span>;
 }
 
 // ── Ticket Detail ─────────────────────────────────────────────
-function TicketDetail({ ticket, onUpdate, onBack }) {
-  const [comment, setComment] = useState("");
+function TicketDetail({ ticket, agent, onUpdate, onBack }) {
+  const [comment, setComment]       = useState("");
   const [commentType, setCommentType] = useState("internal");
-  const [lightbox, setLightbox] = useState(false);
-  const [editStatus, setEditStatus] = useState(ticket.status);
-  const [editAssignee, setEditAssignee] = useState(ticket.assignee);
+  const [lightbox, setLightbox]     = useState(false);
+
+  const update = updates => onUpdate(ticket.id, { ...updates, updatedAt:new Date().toISOString() });
 
   const addComment = () => {
     if (!comment.trim()) return;
-    const c = { id:"c"+Date.now(), author:"Nick Garcia", text:comment.trim(), type:commentType, ts:new Date().toISOString() };
-    onUpdate(ticket.id, { comments:[...ticket.comments, c], updatedAt:new Date().toISOString() });
+    const c = { id:"c"+Date.now(), author:agent.name, avatar:agent.avatar, text:comment.trim(), type:commentType, ts:new Date().toISOString() };
+    update({ comments:[...ticket.comments, c] });
     setComment("");
   };
 
-  const updateStatus = (s) => { setEditStatus(s); onUpdate(ticket.id, { status:s, updatedAt:new Date().toISOString() }); };
-  const updateAssignee = (a) => { setEditAssignee(a); onUpdate(ticket.id, { assignee:a, updatedAt:new Date().toISOString() }); };
-
   return (
-    <div style={{ fontFamily:"'DM Sans', sans-serif" }}>
+    <div style={{ minHeight:"100vh", background:B.offWhite, fontFamily:"'DM Sans',system-ui,sans-serif" }}>
       {lightbox && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:999, display:"flex", alignItems:"center", justifyContent:"center", padding:24 }} onClick={()=>setLightbox(false)}>
-          <img src={ticket.photo} alt="attachment" style={{ maxWidth:"90vw", maxHeight:"88vh", borderRadius:12 }} onClick={e=>e.stopPropagation()} />
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:999, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }} onClick={()=>setLightbox(false)}>
+          <img src={ticket.photo} alt="attachment" style={{ maxWidth:"95vw", maxHeight:"90vh", borderRadius:12 }} />
         </div>
       )}
+      <div style={{ background:B.navy, padding:"0 16px", height:54, display:"flex", alignItems:"center", gap:12, position:"sticky", top:0, zIndex:10 }}>
+        <button onClick={onBack} style={{ background:"none", border:"none", color:"rgba(255,255,255,0.7)", fontSize:24, cursor:"pointer", padding:0, lineHeight:1 }}>‹</button>
+        <span style={{ fontWeight:700, fontSize:15, color:B.white, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{ticket.name}</span>
+        <StatusBadge status={ticket.status} />
+      </div>
 
-      {/* Back */}
-      <button style={{ background:"none", border:"none", color:B.orange, fontSize:13, fontWeight:600, cursor:"pointer", padding:"0 0 18px", display:"flex", alignItems:"center", gap:4, fontFamily:"inherit" }} onClick={onBack}>
-        ← Back to tickets
-      </button>
-
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 280px", gap:24, alignItems:"start" }}>
-        {/* Main */}
-        <div>
-          <div style={{ background:B.white, border:`1px solid ${B.border}`, borderRadius:16, padding:28, marginBottom:20 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:18 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <Avatar name={ticket.name} size={36} />
-                <div>
-                  <div style={{ fontWeight:700, fontSize:16, color:B.text }}>{ticket.name}</div>
-                  <div style={{ fontSize:12, color:B.muted }}>{ticket.contact} · {timeAgo(ticket.createdAt)}</div>
-                </div>
-              </div>
-              <StatusBadge status={editStatus} />
-            </div>
-            <div style={{ display:"flex", gap:6, marginBottom:16, flexWrap:"wrap" }}>
-              <Chip>📍 {ticket.location}</Chip>
-              {ticket.photo && <Chip>📷 Photo attached</Chip>}
-            </div>
-            <p style={{ margin:0, fontSize:15, color:B.text, lineHeight:1.7 }}>{ticket.issue}</p>
-            {ticket.photo && (
-              <div style={{ marginTop:18 }}>
-                <img src={ticket.photo} alt="attachment" style={{ width:160, height:110, objectFit:"cover", borderRadius:10, border:`1.5px solid ${B.border}`, cursor:"pointer" }} onClick={()=>setLightbox(true)} title="Click to enlarge" />
-                <div style={{ fontSize:11, color:B.muted, marginTop:4 }}>Click to enlarge</div>
-              </div>
-            )}
+      <div style={{ padding:"16px", maxWidth:640, margin:"0 auto" }}>
+        {/* Info card */}
+        <div style={{ background:B.white, borderRadius:16, padding:"20px", marginBottom:14, border:`1px solid ${B.border}` }}>
+          <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap" }}>
+            <Chip icon="📍">{ticket.location}</Chip>
+            {ticket.contact && <Chip icon="📬">{ticket.contact}</Chip>}
+            <Chip icon="🕐">{timeAgo(ticket.createdAt)}</Chip>
           </div>
-
-          {/* Comments */}
-          <div style={{ background:B.white, border:`1px solid ${B.border}`, borderRadius:16, padding:28 }}>
-            <h3 style={{ margin:"0 0 20px", fontSize:15, fontWeight:700, color:B.text }}>Comments {ticket.comments.length > 0 && <span style={{ color:B.muted, fontWeight:400 }}>({ticket.comments.length})</span>}</h3>
-
-            {ticket.comments.length === 0 && (
-              <p style={{ color:B.muted, fontSize:13, margin:"0 0 20px" }}>No comments yet.</p>
-            )}
-
-            <div style={{ display:"flex", flexDirection:"column", gap:14, marginBottom:24 }}>
-              {ticket.comments.map(c => (
-                <div key={c.id} style={{ display:"flex", gap:10 }}>
-                  <Avatar name={c.author} size={30} />
-                  <div style={{ flex:1 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
-                      <span style={{ fontWeight:700, fontSize:13, color:B.text }}>{c.author}</span>
-                      <span style={{ fontSize:11, padding:"2px 8px", borderRadius:10, background:c.type==="reply"?B.blueBg:B.offWhite, color:c.type==="reply"?B.blueText:B.muted, fontWeight:600 }}>
-                        {c.type==="reply" ? "Reply to submitter" : "Internal note"}
-                      </span>
-                      <span style={{ fontSize:11, color:B.muted }}>{timeAgo(c.ts)}</span>
-                    </div>
-                    <div style={{ background:B.offWhite, borderRadius:"4px 12px 12px 12px", padding:"10px 14px", fontSize:13, color:B.text, lineHeight:1.6, border:`1px solid ${B.border}` }}>{c.text}</div>
-                  </div>
-                </div>
-              ))}
+          <p style={{ margin:0, fontSize:15, color:B.text, lineHeight:1.7 }}>{ticket.issue}</p>
+          {ticket.photo && (
+            <div style={{ marginTop:16 }}>
+              <img src={ticket.photo} alt="attachment" style={{ width:140, height:96, objectFit:"cover", borderRadius:10, border:`1.5px solid ${B.border}`, cursor:"pointer" }} onClick={()=>setLightbox(true)} />
+              <div style={{ fontSize:11, color:B.muted, marginTop:4 }}>Tap to enlarge</div>
             </div>
-
-            {/* Add comment */}
-            <div style={{ borderTop:`1px solid ${B.border}`, paddingTop:20 }}>
-              <div style={{ display:"flex", gap:8, marginBottom:10 }}>
-                {["internal","reply"].map(t => (
-                  <button key={t} style={{ padding:"5px 14px", borderRadius:8, border:`1.5px solid ${commentType===t?B.orange:B.border}`, background:commentType===t?"#FFF4EF":B.white, color:commentType===t?B.orange:B.textSub, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }} onClick={()=>setCommentType(t)}>
-                    {t==="internal" ? "Internal note" : "Reply to submitter"}
-                  </button>
-                ))}
-              </div>
-              <textarea
-                value={comment} onChange={e=>setComment(e.target.value)}
-                placeholder={commentType==="reply" ? "Write a reply — submitter will be notified by email…" : "Add an internal note — only agents can see this…"}
-                style={{ ...S.input(false), resize:"vertical", fontFamily:"inherit", minHeight:80, marginBottom:10 }} rows={3}
-              />
-              <button style={{ ...S.btnOrange, fontSize:13 }} onClick={addComment}>Add Comment</button>
-            </div>
-          </div>
-        </div>
-
-        {/* Sidebar */}
-        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-          {/* Status */}
-          <div style={{ background:B.white, border:`1px solid ${B.border}`, borderRadius:14, padding:20 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:12 }}>Status</div>
-            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-              {Object.entries(STATUS).map(([key,val]) => (
-                <button key={key} onClick={()=>updateStatus(key)} style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 12px", borderRadius:8, border:`1.5px solid ${editStatus===key?B.orange:B.border}`, background:editStatus===key?"#FFF4EF":B.white, cursor:"pointer", fontFamily:"inherit", fontSize:13, fontWeight:editStatus===key?700:400, color:editStatus===key?B.orange:B.text, transition:"all 0.12s" }}>
-                  <span style={{ width:8, height:8, borderRadius:"50%", background:val.dot, flexShrink:0 }} />
-                  {val.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Assignee */}
-          <div style={{ background:B.white, border:`1px solid ${B.border}`, borderRadius:14, padding:20 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:12 }}>Assignee</div>
-            <select value={editAssignee} onChange={e=>updateAssignee(e.target.value)} style={{ width:"100%", padding:"9px 12px", borderRadius:8, border:`1.5px solid ${B.border}`, fontSize:13, color:B.text, background:B.white, fontFamily:"inherit", cursor:"pointer" }}>
-              <option value="">Unassigned</option>
-              {TEAM.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-            {editAssignee && (
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:12, padding:"8px 12px", background:B.offWhite, borderRadius:8 }}>
-                <Avatar name={editAssignee} size={24} />
-                <span style={{ fontSize:13, color:B.text, fontWeight:600 }}>{editAssignee}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Meta */}
-          <div style={{ background:B.white, border:`1px solid ${B.border}`, borderRadius:14, padding:20 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:12 }}>Details</div>
-            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-              <MetaRow label="Submitted" value={timeAgo(ticket.createdAt)} />
-              <MetaRow label="Last updated" value={timeAgo(ticket.updatedAt)} />
-              <MetaRow label="Contact" value={ticket.contact} />
-              <MetaRow label="Location" value={ticket.location} />
-            </div>
-          </div>
-
-          {/* Close */}
-          {editStatus !== "closed" && (
-            <button onClick={()=>updateStatus("closed")} style={{ width:"100%", padding:"10px 0", borderRadius:10, border:`1.5px solid ${B.border}`, background:B.white, color:B.textSub, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
-              Close Ticket
-            </button>
           )}
         </div>
-      </div>
-    </div>
-  );
-}
 
-function MetaRow({ label, value }) {
-  return (
-    <div>
-      <div style={{ fontSize:11, color:B.muted, marginBottom:2 }}>{label}</div>
-      <div style={{ fontSize:13, color:B.text, fontWeight:500 }}>{value}</div>
+        {/* Status & claim */}
+        <div style={{ background:B.white, borderRadius:16, padding:"20px", marginBottom:14, border:`1px solid ${B.border}` }}>
+          <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:14 }}>Status & Assignment</div>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
+            {Object.entries(STATUS).map(([key,val])=>(
+              <button key={key} onClick={()=>update({status:key})} style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 13px", borderRadius:8, border:`1.5px solid ${ticket.status===key?B.orange:B.border}`, background:ticket.status===key?B.orangeLight:B.white, cursor:"pointer", fontFamily:"inherit", fontSize:13, fontWeight:ticket.status===key?700:400, color:ticket.status===key?B.orange:B.text }}>
+                <span style={{ width:7, height:7, borderRadius:"50%", background:val.dot }} />{val.label}
+              </button>
+            ))}
+          </div>
+          {ticket.claimedBy ? (
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:B.offWhite, borderRadius:10, padding:"10px 14px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <Avatar initials={ticket.claimedBy.avatar} size={28} color={B.orange} />
+                <span style={{ fontSize:13, fontWeight:600, color:B.text }}>{ticket.claimedBy.name}</span>
+                <span style={{ fontSize:11, color:B.muted }}>is on it</span>
+              </div>
+              {ticket.claimedBy.id===agent?.id && (
+                <button onClick={()=>update({claimedBy:null,status:"waiting"})} style={{ ...BTN.ghost, fontSize:12, padding:"5px 10px", borderRadius:7 }}>Release</button>
+              )}
+            </div>
+          ) : (
+            <button onClick={()=>update({claimedBy:agent,status:"on-it"})} style={{ ...BTN.orangeSolid, width:"100%", padding:"12px 0", borderRadius:10, fontSize:14 }}>» Claim This Ticket</button>
+          )}
+        </div>
+
+        {/* Comments */}
+        <div style={{ background:B.white, borderRadius:16, padding:"20px", border:`1px solid ${B.border}` }}>
+          <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:16 }}>
+            Comments {ticket.comments.length>0 && `(${ticket.comments.length})`}
+          </div>
+          {ticket.comments.length===0 && <p style={{ color:B.muted, fontSize:13, margin:"0 0 20px" }}>No comments yet.</p>}
+          <div style={{ display:"flex", flexDirection:"column", gap:14, marginBottom:20 }}>
+            {ticket.comments.map(c=>(
+              <div key={c.id} style={{ display:"flex", gap:10 }}>
+                <Avatar initials={c.avatar} size={30} color={c.type==="reply"?B.blue:B.navy} />
+                <div style={{ flex:1 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:5, flexWrap:"wrap" }}>
+                    <span style={{ fontWeight:700, fontSize:13, color:B.text }}>{c.author}</span>
+                    <span style={{ fontSize:10, padding:"2px 7px", borderRadius:8, background:c.type==="reply"?B.blueBg:B.cream, color:c.type==="reply"?B.blueText:B.muted, fontWeight:600 }}>
+                      {c.type==="reply"?"Reply to submitter":"Internal note"}
+                    </span>
+                    <span style={{ fontSize:11, color:B.muted }}>{timeAgo(c.ts)}</span>
+                  </div>
+                  <div style={{ background:B.offWhite, borderRadius:"4px 12px 12px 12px", padding:"10px 13px", fontSize:13, color:B.text, lineHeight:1.6, border:`1px solid ${B.border}` }}>{c.text}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ borderTop:`1px solid ${B.border}`, paddingTop:16 }}>
+            <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+              {[["internal","Internal note"],["reply","Reply to submitter"]].map(([t,label])=>(
+                <button key={t} onClick={()=>setCommentType(t)} style={{ flex:1, padding:"7px 10px", borderRadius:8, border:`1.5px solid ${commentType===t?B.orange:B.border}`, background:commentType===t?B.orangeLight:B.white, color:commentType===t?B.orange:B.textSub, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>{label}</button>
+              ))}
+            </div>
+            <textarea value={comment} onChange={e=>setComment(e.target.value)} placeholder={commentType==="reply"?"Write a reply — submitter will be notified…":"Add a note only your team can see…"}
+              style={{ width:"100%", padding:"12px 14px", borderRadius:10, border:`1.5px solid ${B.border}`, fontSize:14, color:B.text, outline:"none", boxSizing:"border-box", fontFamily:"inherit", resize:"none", minHeight:85, marginBottom:10, WebkitAppearance:"none" }} rows={3} />
+            <button style={{ ...BTN.orangeSolid, width:"100%", padding:"12px 0", borderRadius:10, fontSize:14 }} onClick={addComment}>Add Comment</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 // ── New Ticket Modal ──────────────────────────────────────────
-function NewTicketModal({ onClose, onSubmit }) {
-  const [form, setForm] = useState({ name:"", contact:"", location:"", issue:"" });
+function NewTicketModal({ agent, onClose, onSubmit }) {
+  const [form, setForm]   = useState({ name:"", contact:"", location:"", issue:"" });
   const [photo, setPhoto] = useState(null);
-  const [assignee, setAssignee] = useState("");
-  const [status, setStatus] = useState("open");
+  const [status, setStatus] = useState("waiting");
   const [errors, setErrors] = useState({});
+  const photoRef = useRef();
 
+  const set = (k,v) => { setForm(f=>({...f,[k]:v})); setErrors(e=>({...e,[k]:false})); };
   const validate = () => {
     const e = {};
     if (!form.name) e.name=true;
@@ -462,51 +502,63 @@ function NewTicketModal({ onClose, onSubmit }) {
     setErrors(e);
     return !Object.keys(e).length;
   };
-
-  const handleSubmit = () => {
+  const handleFile = f => {
+    if (!f||!f.type.startsWith("image/")) return;
+    const r=new FileReader(); r.onload=e=>setPhoto(e.target.result); r.readAsDataURL(f);
+  };
+  const submit = () => {
     if (!validate()) return;
-    onSubmit({ id:uid(), ...form, photo, status, assignee, comments:[], createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() });
+    onSubmit({ id:uid(), ...form, photo, status, claimedBy:status==="on-it"?agent:null, comments:[], createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() });
     onClose();
   };
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:16, fontFamily:"'DM Sans', sans-serif" }}>
-      <div style={{ background:B.white, borderRadius:20, padding:32, width:"100%", maxWidth:560, maxHeight:"90vh", overflowY:"auto", boxShadow:"0 24px 80px rgba(0,0,0,0.3)" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}>
-          <h2 style={{ margin:0, fontSize:20, fontWeight:800, color:B.text }}>Create Ticket</h2>
-          <button style={{ background:"none", border:"none", fontSize:20, cursor:"pointer", color:B.muted }} onClick={onClose}>✕</button>
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:100, display:"flex", alignItems:"flex-end", justifyContent:"center", fontFamily:"'DM Sans',system-ui,sans-serif" }}>
+      <div style={{ background:B.white, borderRadius:"20px 20px 0 0", padding:"24px 20px 36px", width:"100%", maxWidth:580, maxHeight:"92vh", overflowY:"auto", boxShadow:"0 -8px 40px rgba(0,0,0,0.25)" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:22 }}>
+          <h2 style={{ margin:0, fontSize:20, fontWeight:800, color:B.text, letterSpacing:"-0.03em" }}>Create Ticket</h2>
+          <button style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:B.muted }} onClick={onClose}>✕</button>
         </div>
-        <Field label="Submitter Name" error={errors.name}>
-          <input style={S.input(errors.name)} value={form.name} placeholder="Who is reporting this?" onChange={e=>{ setForm({...form,name:e.target.value}); setErrors({...errors,name:false}); }} />
-        </Field>
-        <Field label="Contact Info" error={false}>
-          <input style={S.input(false)} value={form.contact} placeholder="Email or phone (optional)" onChange={e=>setForm({...form,contact:e.target.value})} />
-        </Field>
-        <Field label="Location" error={errors.location}>
-          <input style={S.input(errors.location)} value={form.location} placeholder="Where is the issue?" onChange={e=>{ setForm({...form,location:e.target.value}); setErrors({...errors,location:false}); }} />
-        </Field>
-        <Field label="Issue Description" error={errors.issue}>
-          <textarea style={{ ...S.input(errors.issue), resize:"vertical", fontFamily:"inherit", minHeight:90 }} value={form.issue} placeholder="Describe the issue" onChange={e=>{ setForm({...form,issue:e.target.value}); setErrors({...errors,issue:false}); }} rows={3} />
-        </Field>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:18 }}>
-          <div>
-            <label style={S.label}>Status</label>
-            <select value={status} onChange={e=>setStatus(e.target.value)} style={{ width:"100%", padding:"10px 12px", borderRadius:8, border:`1.5px solid ${B.border}`, fontSize:13, fontFamily:"inherit", background:B.white, color:B.text }}>
-              {Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
-            </select>
+        {[{k:"name",l:"Submitter Name",p:"Who is this for?",req:true},{k:"contact",l:"Contact Info",p:"Email or phone (optional)",req:false},{k:"location",l:"Location",p:"Where is the issue?",req:true}].map(({k,l,p,req})=>(
+          <div key={k} style={{ marginBottom:16 }}>
+            <label style={{ display:"block", fontSize:11, fontWeight:700, color:B.textSub, marginBottom:5, letterSpacing:"0.05em", textTransform:"uppercase" }}>{l}{!req&&<span style={{ fontWeight:400, textTransform:"none", fontSize:11, color:B.muted, marginLeft:4 }}>Optional</span>}</label>
+            <input value={form[k]} placeholder={p} onChange={e=>set(k,e.target.value)} style={{ width:"100%", padding:"12px 14px", borderRadius:10, border:`1.5px solid ${errors[k]?B.red:B.border}`, fontSize:14, color:B.text, outline:"none", boxSizing:"border-box", fontFamily:"inherit", WebkitAppearance:"none" }} />
+            {errors[k]&&<span style={{ color:B.red, fontSize:11, marginTop:3, display:"block" }}>Required</span>}
           </div>
-          <div>
-            <label style={S.label}>Assign To</label>
-            <select value={assignee} onChange={e=>setAssignee(e.target.value)} style={{ width:"100%", padding:"10px 12px", borderRadius:8, border:`1.5px solid ${B.border}`, fontSize:13, fontFamily:"inherit", background:B.white, color:B.text }}>
-              <option value="">Unassigned</option>
-              {TEAM.map(m=><option key={m} value={m}>{m}</option>)}
-            </select>
+        ))}
+        <div style={{ marginBottom:16 }}>
+          <label style={{ display:"block", fontSize:11, fontWeight:700, color:B.textSub, marginBottom:5, letterSpacing:"0.05em", textTransform:"uppercase" }}>Issue Description</label>
+          <textarea value={form.issue} placeholder="Describe the issue" onChange={e=>set("issue",e.target.value)}
+            style={{ width:"100%", padding:"12px 14px", borderRadius:10, border:`1.5px solid ${errors.issue?B.red:B.border}`, fontSize:14, color:B.text, outline:"none", boxSizing:"border-box", fontFamily:"inherit", resize:"none", minHeight:90 }} rows={3} />
+          {errors.issue&&<span style={{ color:B.red, fontSize:11, marginTop:3, display:"block" }}>Required</span>}
+        </div>
+        <div style={{ marginBottom:16 }}>
+          <label style={{ display:"block", fontSize:11, fontWeight:700, color:B.textSub, marginBottom:8, letterSpacing:"0.05em", textTransform:"uppercase" }}>Initial Status</label>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+            {Object.entries(STATUS).slice(0,3).map(([k,v])=>(
+              <button key={k} onClick={()=>setStatus(k)} style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 13px", borderRadius:8, border:`1.5px solid ${status===k?B.orange:B.border}`, background:status===k?B.orangeLight:B.white, cursor:"pointer", fontFamily:"inherit", fontSize:13, fontWeight:status===k?700:400, color:status===k?B.orange:B.text }}>
+                <span style={{ width:7, height:7, borderRadius:"50%", background:v.dot }} />{v.label}
+              </button>
+            ))}
           </div>
         </div>
-        <PhotoUpload photo={photo} onChange={setPhoto} />
-        <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
-          <button style={{ ...S.btnGhost }} onClick={onClose}>Cancel</button>
-          <button style={{ ...S.btnOrange }} onClick={handleSubmit}>Create Ticket</button>
+        <div style={{ marginBottom:20 }}>
+          <label style={{ display:"block", fontSize:11, fontWeight:700, color:B.textSub, marginBottom:8, letterSpacing:"0.05em", textTransform:"uppercase" }}>Photo <span style={{ fontWeight:400, textTransform:"none", color:B.muted }}>Optional</span></label>
+          {photo ? (
+            <div style={{ position:"relative" }}>
+              <img src={photo} alt="preview" style={{ width:"100%", maxHeight:160, objectFit:"cover", borderRadius:10, border:`1.5px solid ${B.border}`, display:"block" }} />
+              <button style={{ position:"absolute", top:8, right:8, background:"rgba(0,0,0,0.65)", color:"#fff", border:"none", borderRadius:6, padding:"4px 10px", fontSize:12, cursor:"pointer", fontWeight:700 }} onClick={()=>setPhoto(null)}>✕</button>
+            </div>
+          ) : (
+            <div onClick={()=>photoRef.current.click()} style={{ border:`2px dashed ${B.border}`, borderRadius:10, padding:"16px", textAlign:"center", cursor:"pointer", background:B.offWhite }}>
+              <span style={{ fontSize:13, color:B.textSub }}>📎 Tap to add a photo</span>
+              <input ref={photoRef} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>handleFile(e.target.files[0])} />
+            </div>
+          )}
+        </div>
+        <div style={{ display:"flex", gap:10 }}>
+          <button style={{ ...BTN.ghost, flex:1, padding:"12px 0", borderRadius:10, fontSize:14 }} onClick={onClose}>Cancel</button>
+          <button style={{ ...BTN.orangeSolid, flex:2, padding:"12px 0", borderRadius:10, fontSize:14 }} onClick={submit}>Create Ticket</button>
         </div>
       </div>
     </div>
@@ -514,85 +566,100 @@ function NewTicketModal({ onClose, onSubmit }) {
 }
 
 // ── Agent Dashboard ───────────────────────────────────────────
-function AgentDashboard({ tickets, onTicketUpdate, onNewTicket, onLogout }) {
-  const [filter, setFilter] = useState("all");
-  const [view, setView] = useState("card");
+function AgentDashboard({ agent, tickets, onUpdate, onAdd, onLogout }) {
+  const [tab, setTab]       = useState("all");
+  const [view, setView]     = useState("card");
   const [selected, setSelected] = useState(null);
-  const [showNew, setShowNew] = useState(false);
-  const [search, setSearch] = useState("");
+  const [showNew, setShowNew]   = useState(false);
+  const [search, setSearch]     = useState("");
 
   const counts = {
-    all: tickets.length,
-    open: tickets.filter(t=>t.status==="open").length,
-    "in-progress": tickets.filter(t=>t.status==="in-progress").length,
-    resolved: tickets.filter(t=>t.status==="resolved").length,
-    closed: tickets.filter(t=>t.status==="closed").length,
+    all:     tickets.length,
+    waiting: tickets.filter(t=>t.status==="waiting").length,
+    mine:    tickets.filter(t=>t.claimedBy?.id===agent.id).length,
+    done:    tickets.filter(t=>t.status==="done"||t.status==="closed").length,
   };
 
   const filtered = tickets.filter(t => {
-    const matchFilter = filter === "all" || t.status === filter;
-    const matchSearch = !search || t.name.toLowerCase().includes(search.toLowerCase()) || t.issue.toLowerCase().includes(search.toLowerCase()) || t.location.toLowerCase().includes(search.toLowerCase());
-    return matchFilter && matchSearch;
+    const matchTab =
+      tab==="all"     ? true :
+      tab==="waiting" ? t.status==="waiting" :
+      tab==="mine"    ? t.claimedBy?.id===agent.id :
+      tab==="done"    ? (t.status==="done"||t.status==="closed") : true;
+    const s = search.toLowerCase();
+    return matchTab && (!search || t.name.toLowerCase().includes(s) || t.issue.toLowerCase().includes(s) || t.location.toLowerCase().includes(s));
   });
 
-  const handleUpdate = (id, updates) => {
-    onTicketUpdate(id, updates);
-    if (selected?.id === id) setSelected(prev=>({...prev,...updates}));
-  };
+  const claim   = id => onUpdate(id,{claimedBy:agent,status:"on-it",updatedAt:new Date().toISOString()});
+  const unclaim = id => onUpdate(id,{claimedBy:null,status:"waiting",updatedAt:new Date().toISOString()});
 
-  if (selected) return (
-    <div style={{ minHeight:"100vh", background:B.offWhite, fontFamily:"'DM Sans', sans-serif" }}>
-      <AgentNav onLogout={onLogout} onNew={()=>setShowNew(true)} />
-      <div style={{ maxWidth:1000, margin:"0 auto", padding:"32px 24px" }}>
-        <TicketDetail ticket={tickets.find(t=>t.id===selected.id)||selected} onUpdate={handleUpdate} onBack={()=>setSelected(null)} />
-      </div>
-      {showNew && <NewTicketModal onClose={()=>setShowNew(false)} onSubmit={t=>{onNewTicket(t);setShowNew(false);}} />}
-    </div>
-  );
+  if (selected) {
+    const live = tickets.find(t=>t.id===selected)||null;
+    if (!live) { setSelected(null); return null; }
+    return <TicketDetail ticket={live} agent={agent} onUpdate={onUpdate} onBack={()=>setSelected(null)} />;
+  }
 
   return (
-    <div style={{ minHeight:"100vh", background:B.offWhite, fontFamily:"'DM Sans', sans-serif" }}>
-      <AgentNav onLogout={onLogout} onNew={()=>setShowNew(true)} />
-      {showNew && <NewTicketModal onClose={()=>setShowNew(false)} onSubmit={t=>{onNewTicket(t);setShowNew(false);}} />}
+    <div style={{ minHeight:"100vh", background:B.offWhite, fontFamily:"'DM Sans',system-ui,sans-serif" }}>
+      {showNew && <NewTicketModal agent={agent} onClose={()=>setShowNew(false)} onSubmit={t=>{onAdd(t);setShowNew(false);}} />}
 
-      <div style={{ maxWidth:1100, margin:"0 auto", padding:"32px 24px" }}>
-        {/* Stats row */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:28 }}>
-          {[["Open",counts.open,B.yellow],["In Progress",counts["in-progress"],B.blue],["Resolved",counts.resolved,B.green],["Closed",counts.closed,B.muted]].map(([label,count,color])=>(
-            <div key={label} style={{ background:B.white, border:`1px solid ${B.border}`, borderRadius:14, padding:"18px 20px" }}>
-              <div style={{ fontSize:28, fontWeight:800, color, lineHeight:1 }}>{count}</div>
-              <div style={{ fontSize:12, color:B.muted, marginTop:4, fontWeight:600 }}>{label}</div>
+      {/* Nav */}
+      <div style={{ background:B.navy, padding:"0 16px", height:54, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:10 }}>
+        <HarbixLogo dark size="sm" />
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <button style={{ ...BTN.orangeSolid, fontSize:13, padding:"7px 14px", borderRadius:8 }} onClick={()=>setShowNew(true)}>+ New</button>
+          <div style={{ display:"flex", alignItems:"center", gap:7, cursor:"pointer" }} onClick={onLogout}>
+            <Avatar initials={agent.avatar} size={28} color={B.navyDark} />
+            <span style={{ fontSize:12, color:"rgba(255,255,255,0.55)", fontWeight:500 }}>Sign out</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{ background:B.navy, padding:"0 16px 16px" }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
+          {[["All",counts.all,B.white],["Waiting",counts.waiting,B.amber],["Mine",counts.mine,B.orange],["Done",counts.done,B.green]].map(([label,count,color])=>(
+            <div key={label} style={{ background:"rgba(255,255,255,0.07)", borderRadius:12, padding:"12px 10px", textAlign:"center" }}>
+              <div style={{ fontSize:22, fontWeight:800, color, lineHeight:1, letterSpacing:"-0.03em" }}>{count}</div>
+              <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginTop:3, fontWeight:600 }}>{label}</div>
             </div>
           ))}
         </div>
+      </div>
 
-        {/* Toolbar */}
-        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20, flexWrap:"wrap" }}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search tickets…" style={{ ...S.input(false), maxWidth:260, margin:0 }} />
-          <div style={{ display:"flex", gap:4, flex:1, flexWrap:"wrap" }}>
-            {Object.entries({all:"All",open:"Open","in-progress":"In Progress",resolved:"Resolved",closed:"Closed"}).map(([k,v])=>(
-              <button key={k} onClick={()=>setFilter(k)} style={{ padding:"6px 14px", borderRadius:8, border:`1.5px solid ${filter===k?B.orange:B.border}`, background:filter===k?"#FFF4EF":B.white, color:filter===k?B.orange:B.textSub, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
-                {v} {k==="all"?`(${counts.all})`:`(${counts[k]||0})`}
-              </button>
-            ))}
-          </div>
-          <div style={{ display:"flex", gap:4 }}>
-            {[["card","▦"],["list","☰"]].map(([v,icon])=>(
-              <button key={v} onClick={()=>setView(v)} style={{ width:34, height:34, borderRadius:8, border:`1.5px solid ${view===v?B.orange:B.border}`, background:view===v?"#FFF4EF":B.white, color:view===v?B.orange:B.textSub, fontSize:16, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>{icon}</button>
-            ))}
-          </div>
+      {/* Tabs */}
+      <div style={{ background:B.white, borderBottom:`1px solid ${B.border}`, padding:"0 16px", display:"flex", overflowX:"auto" }}>
+        {[["all","All"],["waiting","Waiting"],["mine","My Queue"],["done","Done"]].map(([key,label])=>(
+          <button key={key} onClick={()=>setTab(key)} style={{ background:"none", border:"none", borderBottom:`2.5px solid ${tab===key?B.orange:"transparent"}`, padding:"13px 14px", fontSize:13, fontWeight:tab===key?700:500, color:tab===key?B.orange:B.textSub, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
+            {label}{key!=="all"&&` (${counts[key]||0})`}
+          </button>
+        ))}
+      </div>
+
+      {/* Toolbar */}
+      <div style={{ padding:"12px 16px", display:"flex", gap:8 }}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search tickets…" style={{ flex:1, padding:"10px 14px", borderRadius:10, border:`1.5px solid ${B.border}`, fontSize:13, color:B.text, outline:"none", fontFamily:"inherit", background:B.white, WebkitAppearance:"none" }} />
+        <div style={{ display:"flex", gap:4 }}>
+          {[["card","▦"],["list","☰"]].map(([v,icon])=>(
+            <button key={v} onClick={()=>setView(v)} style={{ width:38, height:38, borderRadius:8, border:`1.5px solid ${view===v?B.orange:B.border}`, background:view===v?B.orangeLight:B.white, color:view===v?B.orange:B.textSub, fontSize:15, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>{icon}</button>
+          ))}
         </div>
+      </div>
 
-        {/* Ticket grid/list */}
-        {filtered.length === 0 ? (
-          <div style={{ textAlign:"center", padding:"60px 0", color:B.muted, fontSize:14 }}>No tickets found.</div>
-        ) : view === "card" ? (
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:14 }}>
-            {filtered.map(t=><TicketCard key={t.id} ticket={t} onClick={()=>setSelected(t)} />)}
+      {/* Tickets */}
+      <div style={{ padding:"0 16px 40px" }}>
+        {filtered.length===0 ? (
+          <div style={{ textAlign:"center", padding:"60px 0", color:B.muted }}>
+            <div style={{ fontSize:36, marginBottom:12 }}>📭</div>
+            <div style={{ fontSize:14, fontWeight:600 }}>No tickets here</div>
+          </div>
+        ) : view==="card" ? (
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            {filtered.map(t=><TicketCard key={t.id} ticket={t} agent={agent} onClaim={claim} onUnclaim={unclaim} onClick={()=>setSelected(t.id)} />)}
           </div>
         ) : (
           <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-            {filtered.map(t=><TicketRow key={t.id} ticket={t} onClick={()=>setSelected(t)} />)}
+            {filtered.map(t=><TicketRow key={t.id} ticket={t} agent={agent} onClaim={claim} onUnclaim={unclaim} onClick={()=>setSelected(t.id)} />)}
           </div>
         )}
       </div>
@@ -600,50 +667,34 @@ function AgentDashboard({ tickets, onTicketUpdate, onNewTicket, onLogout }) {
   );
 }
 
-function AgentNav({ onLogout, onNew }) {
-  return (
-    <div style={{ background:B.navy, height:56, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 24px", borderBottom:`1px solid rgba(255,255,255,0.08)`, position:"sticky", top:0, zIndex:50 }}>
-      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-        <span style={{ fontSize:20 }}>⚓</span>
-        <span style={{ fontWeight:800, fontSize:17, color:B.white, letterSpacing:"-0.3px" }}>Harbix</span>
-        <span style={{ fontSize:11, color:B.orange, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", marginLeft:4 }}>Agent</span>
-      </div>
-      <div style={{ display:"flex", gap:10 }}>
-        <button style={{ ...S.btnOrange, fontSize:13, padding:"7px 16px" }} onClick={onNew}>+ New Ticket</button>
-        <button style={{ ...S.btnGhost, fontSize:13, padding:"7px 16px" }} onClick={onLogout}>Sign out</button>
-      </div>
-    </div>
-  );
-}
-
-// ── Styles ────────────────────────────────────────────────────
-const S = {
-  label: { display:"block", fontSize:12, fontWeight:700, color:B.textSub, marginBottom:5, letterSpacing:"0.02em" },
-  input: (err) => ({ width:"100%", padding:"10px 14px", borderRadius:8, border:`1.5px solid ${err?B.red:B.border}`, fontSize:13, color:B.text, outline:"none", boxSizing:"border-box", background:B.white, fontFamily:"'DM Sans', sans-serif" }),
-  btnOrange: { background:B.orange, color:B.white, border:"none", borderRadius:8, padding:"9px 20px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"'DM Sans', sans-serif", letterSpacing:"0.01em" },
-  btnGhost: { background:B.white, color:B.textSub, border:`1.5px solid ${B.border}`, borderRadius:8, padding:"9px 20px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"'DM Sans', sans-serif" },
+// ── Button tokens ─────────────────────────────────────────────
+const BTN = {
+  orangeSolid: { background:B.orange, color:B.white, border:"none", borderRadius:10, padding:"10px 20px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"'DM Sans',system-ui,sans-serif", display:"inline-flex", alignItems:"center", justifyContent:"center", gap:6 },
+  ghost:       { background:B.white, color:B.textSub, border:`1.5px solid ${B.border}`, borderRadius:10, padding:"10px 20px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"'DM Sans',system-ui,sans-serif" },
 };
 
-// ── Root App ──────────────────────────────────────────────────
+// ── Root ──────────────────────────────────────────────────────
 export default function App() {
-  const [page, setPage] = useState("public"); // public | login | agent
+  const [page, setPage]     = useState("public");
+  const [agent, setAgent]   = useState(null);
   const [tickets, setTickets] = useState(MOCK_TICKETS);
-  const [authed, setAuthed] = useState(false);
 
   const updateTicket = (id, updates) => setTickets(prev=>prev.map(t=>t.id===id?{...t,...updates}:t));
-  const addTicket = (t) => setTickets(prev=>[t,...prev]);
+  const addTicket    = t => setTickets(prev=>[t,...prev]);
+  const handleLogin  = a => { setAgent(a); setPage("agent"); };
+  const handleLogout = () => { setAgent(null); setPage("public"); };
 
   return (
-    <div style={{ fontFamily:"'DM Sans', sans-serif" }}>
-      {/* Page switcher for demo */}
+    <div style={{ fontFamily:"'DM Sans',system-ui,sans-serif" }}>
+      {/* Demo switcher — remove in production */}
       <div style={{ position:"fixed", bottom:16, right:16, zIndex:200, display:"flex", gap:8 }}>
-        <button style={{ ...S.btnGhost, fontSize:11, padding:"5px 12px", boxShadow:"0 2px 8px rgba(0,0,0,0.12)" }} onClick={()=>setPage("public")}>👤 User form</button>
-        <button style={{ ...S.btnOrange, fontSize:11, padding:"5px 12px", boxShadow:"0 2px 8px rgba(0,0,0,0.15)" }} onClick={()=>{ if(authed){setPage("agent")}else{setPage("login")} }}>🔒 Agent</button>
+        <button style={{ ...BTN.ghost, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.12)" }} onClick={()=>setPage("public")}>👤 User</button>
+        <button style={{ ...BTN.orangeSolid, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.15)" }} onClick={()=>{ if(agent)setPage("agent"); else setPage("login"); }}>🔒 Agent</button>
       </div>
 
-      {page === "public" && <PublicForm onSubmit={t=>{addTicket(t);}} />}
-      {page === "login" && <AgentLogin onLogin={()=>{ setAuthed(true); setPage("agent"); }} />}
-      {page === "agent" && authed && <AgentDashboard tickets={tickets} onTicketUpdate={updateTicket} onNewTicket={addTicket} onLogout={()=>{ setAuthed(false); setPage("public"); }} />}
+      {page==="public" && <PublicForm onSubmit={t=>{addTicket(t);}} />}
+      {page==="login"  && <GoogleLogin onLogin={handleLogin} />}
+      {page==="agent"  && agent && <AgentDashboard agent={agent} tickets={tickets} onUpdate={updateTicket} onAdd={addTicket} onLogout={handleLogout} />}
     </div>
   );
 }

@@ -1,6 +1,4 @@
 // api/submit-ticket.js
-// Vercel serverless function — runs on the server, PC credentials never exposed to browser
-
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -8,72 +6,65 @@ export default async function handler(req, res) {
 
   const { name, location, issue, contact, photoURL, firestoreId } = req.body;
 
-  const PC_APP_ID = process.env.PC_APP_ID;
-  const PC_SECRET = process.env.PC_SECRET;
+  const PC_APP_ID   = process.env.PC_APP_ID;
+  const PC_SECRET   = process.env.PC_SECRET;
+  // Your Planning Center Person ID — visible at bottom right of api.planningcenteronline.com
+  const PC_PERSON_ID = process.env.PC_PERSON_ID;
 
-  if (!PC_APP_ID || !PC_SECRET) {
+  if (!PC_APP_ID || !PC_SECRET || !PC_PERSON_ID) {
+    console.error("Missing PC credentials");
     return res.status(500).json({ error: "Planning Center credentials not configured" });
   }
 
-  // Build the task note with all ticket details
-  const noteLines = [
+  const auth = "Basic " + Buffer.from(`${PC_APP_ID}:${PC_SECRET}`).toString("base64");
+
+  const taskTitle = `[Harbix] ${name} — ${location}: ${issue.slice(0, 60)}${issue.length > 60 ? "…" : ""}`;
+
+  const note = [
     `📍 Location: ${location}`,
     `👤 Submitted by: ${name}`,
     contact ? `📬 Contact: ${contact}` : null,
     ``,
-    `📝 Issue:`,
-    issue,
-    ``,
+    `📝 Issue: ${issue}`,
     photoURL ? `📷 Photo: ${photoURL}` : null,
     ``,
     `🔗 Harbix ID: ${firestoreId}`,
-    `🌐 View in Harbix: https://harbix.vercel.app`,
+    `🌐 https://harbix.vercel.app`,
   ].filter(Boolean).join("\n");
 
   try {
-    // First — get your own Person ID from Planning Center
-    const meResponse = await fetch("https://api.planningcenteronline.com/people/v2/me", {
-      headers: {
-        "Authorization": "Basic " + Buffer.from(`${PC_APP_ID}:${PC_SECRET}`).toString("base64"),
-      },
-    });
-    const meData = await meResponse.json();
-    const personId = meData.data?.id;
+    console.log("Creating PC task for person:", PC_PERSON_ID);
 
-    if (!personId) {
-      console.error("Could not fetch PC person ID:", JSON.stringify(meData));
-      return res.status(500).json({ error: "Could not resolve Planning Center person ID" });
-    }
-
-    // Create a task assigned to that person
-    const response = await fetch(`https://api.planningcenteronline.com/people/v2/people/${personId}/tasks`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Basic " + Buffer.from(`${PC_APP_ID}:${PC_SECRET}`).toString("base64"),
-      },
-      body: JSON.stringify({
-        data: {
-          type: "Task",
-          attributes: {
-            note:      `[Harbix] ${name} — ${location}: ${issue.slice(0, 80)}${issue.length > 80 ? "…" : ""}`,
-            completed: false,
+    const taskRes = await fetch(
+      `https://api.planningcenteronline.com/people/v2/people/${PC_PERSON_ID}/tasks`,
+      {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", "Authorization": auth },
+        body: JSON.stringify({
+          data: {
+            type: "Task",
+            attributes: {
+              note:      taskTitle,
+              completed: false,
+            },
           },
-        },
-      }),
-    });
+        }),
+      }
+    );
 
-    if (!response.ok) {
-      const err = await response.text();
-      console.error("PC API error:", err);
-      return res.status(500).json({ error: "Planning Center API error", detail: err });
+    const taskJson = await taskRes.json();
+    console.log("PC task response status:", taskRes.status);
+    console.log("PC task response:", JSON.stringify(taskJson).slice(0, 300));
+
+    if (!taskRes.ok) {
+      console.error("PC task creation failed:", JSON.stringify(taskJson));
+      return res.status(500).json({ error: "PC task creation failed", detail: taskJson });
     }
 
-    const data = await response.json();
-    return res.status(200).json({ success: true, pcTaskId: data.data?.id });
+    return res.status(200).json({ success: true, pcTaskId: taskJson.data?.id });
 
   } catch (err) {
-    console.error("Serverless function error:", err);
-    return res.status(500).json({ error: "Internal server error" });
+    console.error("Serverless function error:", err.message);
+    return res.status(500).json({ error: "Internal server error", message: err.message });
   }
 }

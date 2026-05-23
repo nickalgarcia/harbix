@@ -33,9 +33,8 @@ export default async function handler(req, res) {
           location:   location   || "Unknown",
           contact:    contact    || "Not provided",
           issue:      issue      || "",
-          photo_note: photoURL   ? `📷 Photo attached: ${photoURL}` : "No photo attached",
+          photo_note: photoURL   ? `Photo attached: ${photoURL}` : "No photo attached",
           ticket_id:  firestoreId || "",
-          to_email:   EMAILJS_TO_EMAIL,
         },
       }),
     });

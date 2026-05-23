@@ -1,4 +1,6 @@
 // api/submit-ticket.js
+// Vercel serverless function — sends email notification via EmailJS on ticket submission
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -6,62 +8,48 @@ export default async function handler(req, res) {
 
   const { name, location, issue, contact, photoURL, firestoreId } = req.body;
 
-  const PC_APP_ID   = process.env.PC_APP_ID;
-  const PC_SECRET   = process.env.PC_SECRET;
-  // Your Planning Center Person ID — visible at bottom right of api.planningcenteronline.com
-  const PC_PERSON_ID = process.env.PC_PERSON_ID;
+  const EMAILJS_SERVICE_ID  = process.env.EMAILJS_SERVICE_ID;
+  const EMAILJS_TEMPLATE_ID = process.env.EMAILJS_TEMPLATE_ID;
+  const EMAILJS_PUBLIC_KEY  = process.env.EMAILJS_PUBLIC_KEY;
+  const EMAILJS_TO_EMAIL    = process.env.EMAILJS_TO_EMAIL;
 
-  if (!PC_APP_ID || !PC_SECRET || !PC_PERSON_ID) {
-    console.error("Missing PC credentials");
-    return res.status(500).json({ error: "Planning Center credentials not configured" });
+  if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
+    console.error("Missing EmailJS credentials");
+    return res.status(500).json({ error: "EmailJS credentials not configured" });
   }
 
-  const auth = "Basic " + Buffer.from(`${PC_APP_ID}:${PC_SECRET}`).toString("base64");
-
-  const taskTitle = `[Harbix] ${name} — ${location}: ${issue.slice(0, 60)}${issue.length > 60 ? "…" : ""}`;
-
-  const note = [
-    `📍 Location: ${location}`,
-    `👤 Submitted by: ${name}`,
-    contact ? `📬 Contact: ${contact}` : null,
-    ``,
-    `📝 Issue: ${issue}`,
-    photoURL ? `📷 Photo: ${photoURL}` : null,
-    ``,
-    `🔗 Harbix ID: ${firestoreId}`,
-    `🌐 https://harbix.vercel.app`,
-  ].filter(Boolean).join("\n");
-
   try {
-    console.log("Creating PC task for person:", PC_PERSON_ID);
+    console.log("Sending EmailJS notification for ticket:", firestoreId);
 
-    const taskRes = await fetch(
-      `https://api.planningcenteronline.com/people/v2/people/${PC_PERSON_ID}/tasks`,
-      {
-        method:  "POST",
-        headers: { "Content-Type": "application/json", "Authorization": auth },
-        body: JSON.stringify({
-          data: {
-            type: "Task",
-            attributes: {
-              note:      taskTitle,
-              completed: false,
-            },
-          },
-        }),
-      }
-    );
+    const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        service_id:  EMAILJS_SERVICE_ID,
+        template_id: EMAILJS_TEMPLATE_ID,
+        user_id:     EMAILJS_PUBLIC_KEY,
+        template_params: {
+          name:       name       || "Unknown",
+          location:   location   || "Unknown",
+          contact:    contact    || "Not provided",
+          issue:      issue      || "",
+          photo_note: photoURL   ? `📷 Photo attached: ${photoURL}` : "No photo attached",
+          ticket_id:  firestoreId || "",
+          to_email:   EMAILJS_TO_EMAIL,
+        },
+      }),
+    });
 
-    const taskJson = await taskRes.json();
-    console.log("PC task response status:", taskRes.status);
-    console.log("PC task response:", JSON.stringify(taskJson).slice(0, 300));
+    const text = await response.text();
+    console.log("EmailJS response status:", response.status);
+    console.log("EmailJS response:", text);
 
-    if (!taskRes.ok) {
-      console.error("PC task creation failed:", JSON.stringify(taskJson));
-      return res.status(500).json({ error: "PC task creation failed", detail: taskJson });
+    if (!response.ok) {
+      console.error("EmailJS failed:", text);
+      return res.status(500).json({ error: "EmailJS failed", detail: text });
     }
 
-    return res.status(200).json({ success: true, pcTaskId: taskJson.data?.id });
+    return res.status(200).json({ success: true });
 
   } catch (err) {
     console.error("Serverless function error:", err.message);

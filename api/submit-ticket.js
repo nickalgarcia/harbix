@@ -31,8 +31,22 @@ export default async function handler(req, res) {
   ].filter(Boolean).join("\n");
 
   try {
-    // Create a task in Planning Center People
-    const response = await fetch("https://api.planningcenteronline.com/people/v2/tasks", {
+    // First — get your own Person ID from Planning Center
+    const meResponse = await fetch("https://api.planningcenteronline.com/people/v2/me", {
+      headers: {
+        "Authorization": "Basic " + Buffer.from(`${PC_APP_ID}:${PC_SECRET}`).toString("base64"),
+      },
+    });
+    const meData = await meResponse.json();
+    const personId = meData.data?.id;
+
+    if (!personId) {
+      console.error("Could not fetch PC person ID:", JSON.stringify(meData));
+      return res.status(500).json({ error: "Could not resolve Planning Center person ID" });
+    }
+
+    // Create a task assigned to that person
+    const response = await fetch(`https://api.planningcenteronline.com/people/v2/people/${personId}/tasks`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -8,12 +8,12 @@ export default async function handler(req, res) {
 
   const { name, location, issue, contact, photoURL, firestoreId } = req.body;
 
-  const EMAILJS_SERVICE_ID  = process.env.EMAILJS_SERVICE_ID;
-  const EMAILJS_TEMPLATE_ID = process.env.EMAILJS_TEMPLATE_ID;
-  const EMAILJS_PUBLIC_KEY  = process.env.EMAILJS_PUBLIC_KEY;
-  const EMAILJS_TO_EMAIL    = process.env.EMAILJS_TO_EMAIL;
+  const EMAILJS_SERVICE_ID   = process.env.EMAILJS_SERVICE_ID;
+  const EMAILJS_TEMPLATE_ID  = process.env.EMAILJS_TEMPLATE_ID;
+  const EMAILJS_PRIVATE_KEY  = process.env.EMAILJS_PRIVATE_KEY;
+  const EMAILJS_TO_EMAIL     = process.env.EMAILJS_TO_EMAIL;
 
-  if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
+  if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PRIVATE_KEY) {
     console.error("Missing EmailJS credentials");
     return res.status(500).json({ error: "EmailJS credentials not configured" });
   }
@@ -25,9 +25,9 @@ export default async function handler(req, res) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        service_id:  EMAILJS_SERVICE_ID,
-        template_id: EMAILJS_TEMPLATE_ID,
-        user_id:     EMAILJS_PUBLIC_KEY,
+        service_id:   EMAILJS_SERVICE_ID,
+        template_id:  EMAILJS_TEMPLATE_ID,
+        accessToken:  EMAILJS_PRIVATE_KEY,
         template_params: {
           name:       name       || "Unknown",
           location:   location   || "Unknown",

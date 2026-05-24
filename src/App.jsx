@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import {
   signInWithPopup, signOut, onAuthStateChanged
 } from "firebase/auth";
@@ -722,14 +723,14 @@ const BTN = {
   ghost:       { background:B.white, color:B.textSub, border:`1.5px solid ${B.border}`, borderRadius:10, padding:"10px 20px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"'DM Sans',system-ui,sans-serif" },
 };
 
-// ── Root App — real Firebase wired up ────────────────────────
-export default function App() {
+// ── Root App — React Router with proper /agent route ─────────
+function AppInner() {
   const [user, setUser]       = useState(undefined); // undefined = loading
   const [agent, setAgent]     = useState(null);
   const [tickets, setTickets] = useState([]);
-  const [page, setPage]       = useState("public");
+  const navigate = useNavigate();
 
-  // ── Auth listener — auto-redirect on refresh if already logged in
+  // ── Auth listener
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser && firebaseUser.email?.endsWith("@godchasers.church")) {
@@ -742,18 +743,16 @@ export default function App() {
         };
         setAgent(a);
         setUser(firebaseUser);
-        // Auto-redirect to agent dashboard when Firebase confirms login
-        setPage("agent");
+        navigate("/agent");
       } else {
         setAgent(null);
         setUser(null);
-        setPage("public");
       }
     });
     return unsub;
   }, []);
 
-  // ── Firestore real-time listener (only when agent is logged in)
+  // ── Firestore real-time listener
   useEffect(() => {
     if (!agent) return;
     const q = query(collection(db, "tickets"), orderBy("createdAt", "desc"));
@@ -767,16 +766,15 @@ export default function App() {
   const handleSubmit = async (answers, photoFile) => {
     const ticketId = "t_" + Date.now();
     let photoURL   = null;
-
-    // Photo upload is non-blocking — ticket saves even if photo fails
     if (photoFile) {
       try {
+        console.log("Uploading photo, file type:", photoFile.type, "size:", photoFile.size);
         photoURL = await uploadPhoto(photoFile, ticketId);
+        console.log("Photo uploaded successfully:", photoURL);
       } catch (e) {
-        console.warn("Photo upload failed — saving ticket without photo:", e);
+        console.error("Photo upload failed:", e?.code, e?.message);
       }
     }
-
     const ticketData = {
       name:      answers.name     || "",
       contact:   answers.contact  || "",
@@ -789,11 +787,7 @@ export default function App() {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
-
-    // Save to Firestore
     const docRef = await addDoc(collection(db, "tickets"), ticketData);
-
-    // Send to Planning Center via serverless function
     try {
       await fetch("/api/submit-ticket", {
         method: "POST",
@@ -801,12 +795,11 @@ export default function App() {
         body: JSON.stringify({ ...ticketData, firestoreId: docRef.id, createdAt: new Date().toISOString() }),
       });
     } catch (e) {
-      console.error("PC sync failed:", e);
-      // Non-fatal — ticket is already in Firestore
+      console.error("Email notification failed:", e);
     }
   };
 
-  // ── Update ticket (agent actions)
+  // ── Update ticket
   const handleUpdate = async (id, updates) => {
     await updateDoc(doc(db, "tickets", id), { ...updates, updatedAt: serverTimestamp() });
   };
@@ -833,10 +826,10 @@ export default function App() {
     await addDoc(collection(db, "tickets"), ticketData);
   };
 
-  const handleLogin  = (a) => { setAgent(a); setPage("agent"); };
-  const handleLogout = async () => { await signOut(auth); setAgent(null); setPage("public"); };
+  const handleLogin  = (a) => { setAgent(a); navigate("/agent"); };
+  const handleLogout = async () => { await signOut(auth); setAgent(null); navigate("/"); };
 
-  // Loading state while Firebase checks auth
+  // Loading screen while Firebase checks auth
   if (user === undefined) return (
     <div style={{ minHeight:"100vh", background:`linear-gradient(160deg,${B.deep} 0%,${B.navy} 100%)`, display:"flex", alignItems:"center", justifyContent:"center" }}>
       <div style={{ textAlign:"center" }}>
@@ -846,28 +839,33 @@ export default function App() {
     </div>
   );
 
-  // If agent is logged in, always show dashboard regardless of page state
-  if (agent) return (
-    <AgentDashboard
-      agent={agent}
-      tickets={tickets}
-      onUpdate={handleUpdate}
-      onAdd={handleAdd}
-      onLogout={handleLogout}
-    />
-  );
+  return (
+    <Routes>
+      {/* Public form — anyone can access */}
+      <Route path="/" element={<PublicForm onSubmit={handleSubmit} />} />
 
-  // return (
-  //   <div style={{ fontFamily:"'DM Sans',system-ui,sans-serif" }}>
-  //     {/* Demo switcher — remove before handing off to church */}
-  //     {page !== "login" && (
-  //       <div style={{ position:"fixed", bottom:16, right:16, zIndex:200, display:"flex", gap:8 }}>
-  //         <button style={{ ...BTN.ghost, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.12)" }} onClick={()=>setPage("public")}>👤 User</button>
-  //         <button style={{ ...BTN.orangeSolid, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.15)" }} onClick={()=>setPage("login")}>🔒 Agent</button>
-  //       </div>
-  //     )}
-  //     {page === "public" && <PublicForm onSubmit={handleSubmit} />}
-  //     {page === "login"  && <GoogleLogin onLogin={handleLogin} />}
-  //   </div>
-  // );
+      {/* Agent login — redirects to /agent if already logged in */}
+      <Route path="/agent/login" element={
+        agent ? <Navigate to="/agent" replace /> : <GoogleLogin onLogin={handleLogin} />
+      } />
+
+      {/* Agent dashboard — redirects to login if not authenticated */}
+      <Route path="/agent" element={
+        agent
+          ? <AgentDashboard agent={agent} tickets={tickets} onUpdate={handleUpdate} onAdd={handleAdd} onLogout={handleLogout} />
+          : <Navigate to="/agent/login" replace />
+      } />
+
+      {/* Catch-all — redirect to home */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppInner />
+    </BrowserRouter>
+  );
 }

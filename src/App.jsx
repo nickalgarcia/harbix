@@ -857,17 +857,17 @@ export default function App() {
     />
   );
 
-  return (
-    <div style={{ fontFamily:"'DM Sans',system-ui,sans-serif" }}>
-      {/* Demo switcher — remove before handing off to church */}
-      {page !== "login" && (
-        <div style={{ position:"fixed", bottom:16, right:16, zIndex:200, display:"flex", gap:8 }}>
-          <button style={{ ...BTN.ghost, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.12)" }} onClick={()=>setPage("public")}>👤 User</button>
-          <button style={{ ...BTN.orangeSolid, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.15)" }} onClick={()=>setPage("login")}>🔒 Agent</button>
-        </div>
-      )}
-      {page === "public" && <PublicForm onSubmit={handleSubmit} />}
-      {page === "login"  && <GoogleLogin onLogin={handleLogin} />}
-    </div>
-  );
+  // return (
+  //   <div style={{ fontFamily:"'DM Sans',system-ui,sans-serif" }}>
+  //     {/* Demo switcher — remove before handing off to church */}
+  //     {page !== "login" && (
+  //       <div style={{ position:"fixed", bottom:16, right:16, zIndex:200, display:"flex", gap:8 }}>
+  //         <button style={{ ...BTN.ghost, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.12)" }} onClick={()=>setPage("public")}>👤 User</button>
+  //         <button style={{ ...BTN.orangeSolid, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.15)" }} onClick={()=>setPage("login")}>🔒 Agent</button>
+  //       </div>
+  //     )}
+  //     {page === "public" && <PublicForm onSubmit={handleSubmit} />}
+  //     {page === "login"  && <GoogleLogin onLogin={handleLogin} />}
+  //   </div>
+  // );
 }

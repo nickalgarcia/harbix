@@ -55,10 +55,10 @@ const STEPS = [
 
 // ── Team members ─────────────────────────────────────────────
 const TEAM = [
-  { id:"a1", name:"Nick Garcia",  email:"nick@godchasers.church",    avatar:"NG" },
-  { id:"a2", name:"Anthony",      email:"anthony@godchasers.church",  avatar:"AN" },
-  { id:"a3", name:"PD",           email:"pd@godchasers.church",       avatar:"PD" },
-  { id:"a4", name:"Ravon",        email:"ravon@godchasers.church",    avatar:"RV" },
+  { id:"a1", name:"Nick Garcia",    email:"nick@godchasers.church",    avatar:"NG" },
+  { id:"a2", name:"Anthony",        email:"anthony@godchasers.church", avatar:"AN" },
+  { id:"a3", name:"Pastor Donte",   email:"pd@godchasers.church",      avatar:"PD" },
+  { id:"a4", name:"Ravon",          email:"ravon@godchasers.church",   avatar:"RV" },
 ];
 
 const PRIORITY = {

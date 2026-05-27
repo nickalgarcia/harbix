@@ -611,18 +611,23 @@ function TicketDetail({ ticket, agent, onUpdate, onBack }) {
           </div>
 
           <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:10 }}>Assign To</div>
-          <select value={ticket.assignedTo?.id||""} onChange={e=>{
-            const member = TEAM.find(m=>m.id===e.target.value)||null;
-            handleAssign(member);
-          }} style={{ width:"100%", padding:"10px 14px", borderRadius:10, border:`1.5px solid ${B.border}`, fontSize:13, color:B.text, background:B.white, fontFamily:"inherit", marginBottom:14, WebkitAppearance:"none" }}>
-            <option value="">Unassigned</option>
-            {TEAM.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
+          <div style={{ position:"relative", marginBottom:14 }}>
+            <select value={ticket.assignedTo?.id||""} onChange={e=>{
+              const member = TEAM.find(m=>m.id===e.target.value)||null;
+              handleAssign(member);
+            }} style={{ width:"100%", padding:"11px 40px 11px 14px", borderRadius:10, border:`1.5px solid ${ticket.assignedTo?B.orange:B.border}`, fontSize:14, color:ticket.assignedTo?B.orange:B.text, background:ticket.assignedTo?B.orangeLight:B.white, fontFamily:"inherit", cursor:"pointer", appearance:"auto" }}>
+              <option value="">Unassigned — tap to assign</option>
+              {TEAM.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
           {ticket.assignedTo && (
-            <div style={{ display:"flex", alignItems:"center", gap:8, background:B.offWhite, borderRadius:10, padding:"8px 12px", marginBottom:14 }}>
-              <Avatar initials={ticket.assignedTo.avatar} size={26} color={B.orange} />
-              <span style={{ fontSize:13, fontWeight:600, color:B.text }}>{ticket.assignedTo.name}</span>
-              <span style={{ fontSize:11, color:B.muted }}>assigned</span>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:B.orangeLight, borderRadius:10, padding:"10px 14px", marginBottom:14, border:`1px solid #FDDECE` }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <Avatar initials={ticket.assignedTo.avatar} size={28} color={B.orange} />
+                <span style={{ fontSize:13, fontWeight:700, color:B.orange }}>{ticket.assignedTo.name}</span>
+                <span style={{ fontSize:11, color:B.textSub }}>assigned</span>
+              </div>
+              <button onClick={()=>handleAssign(null)} style={{ background:"none", border:"none", fontSize:12, color:B.muted, cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>Remove</button>
             </div>
           )}
 

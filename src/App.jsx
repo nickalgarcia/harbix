@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import {
   signInWithPopup, signOut, onAuthStateChanged
 } from "firebase/auth";
@@ -53,6 +52,20 @@ const STEPS = [
   { key:"contact",  question:"How can we reach you?",                placeholder:"Email or phone number",                    type:"text",     required:false },
   { key:"photo",    question:"Got a photo or screenshot?",           placeholder:"",                                         type:"photo",    required:false },
 ];
+
+// ── Team members ─────────────────────────────────────────────
+const TEAM = [
+  { id:"a1", name:"Nick Garcia",  email:"nick@godchasers.church",    avatar:"NG" },
+  { id:"a2", name:"Anthony",      email:"anthony@godchasers.church",  avatar:"AN" },
+  { id:"a3", name:"PD",           email:"pd@godchasers.church",       avatar:"PD" },
+  { id:"a4", name:"Ravon",        email:"ravon@godchasers.church",    avatar:"RV" },
+];
+
+const PRIORITY = {
+  normal:   { label:"Normal",   bg:"#F3F4F6", text:"#6B7280",   dot:"#9CA3AF" },
+  high:     { label:"High",     bg:B.amberBg, text:B.amberText, dot:B.amber   },
+  critical: { label:"Critical", bg:B.redBg,   text:B.redText,   dot:B.red     },
+};
 
 // ── Helpers ───────────────────────────────────────────────────
 function timeAgo(val) {
@@ -374,9 +387,11 @@ function TicketCard({ ticket, agent, onClaim, onUnclaim, onClick }) {
         </div>
         <div style={{ display:"flex", gap:5, marginBottom:10, flexWrap:"wrap" }}>
           <Chip icon="📍">{ticket.location}</Chip>
+          {ticket.priority && ticket.priority !== "normal" && <PriorityBadge priority={ticket.priority} />}
+          {ticket.assignedTo && <Chip icon="👤">{ticket.assignedTo.name.split(" ")[0]}</Chip>}
           {ticket.photoURL && <Chip icon="📷">Photo</Chip>}
           {ticket.comments?.length > 0 && <Chip icon="💬">{ticket.comments.length}</Chip>}
-          {ticket.claimedBy && <Chip icon="👤">{ticket.claimedBy.name.split(" ")[0]}</Chip>}
+          {ticket.dueDate && <Chip icon="⏰">{ticket.dueDate}</Chip>}
         </div>
         <p style={{ margin:0, fontSize:13, color:B.textSub, lineHeight:1.55, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>{ticket.issue}</p>
       </div>
@@ -429,6 +444,17 @@ function TicketRow({ ticket, agent, onClaim, onUnclaim, onClick }) {
   );
 }
 
+// ── Priority Badge ────────────────────────────────────────────
+function PriorityBadge({ priority }) {
+  const p = PRIORITY[priority] || PRIORITY.normal;
+  return (
+    <span style={{ display:"inline-flex", alignItems:"center", gap:5, padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:700, background:p.bg, color:p.text, whiteSpace:"nowrap" }}>
+      <span style={{ width:6, height:6, borderRadius:"50%", background:p.dot, flexShrink:0 }} />
+      {p.label}
+    </span>
+  );
+}
+
 // ── Ticket Detail ─────────────────────────────────────────────
 function TicketDetail({ ticket, agent, onUpdate, onBack }) {
   const [comment, setComment]         = useState("");
@@ -436,16 +462,95 @@ function TicketDetail({ ticket, agent, onUpdate, onBack }) {
   const [lightbox, setLightbox]       = useState(false);
   const [saving, setSaving]           = useState(false);
 
-  const update = async (updates) => {
+  const logActivity = (action) => ({
+    id: "a"+Date.now(),
+    action,
+    agent: agent.name,
+    ts: new Date().toISOString(),
+  });
+
+  const update = async (updates, activityMsg) => {
     setSaving(true);
-    await updateDoc(doc(db, "tickets", ticket.id), { ...updates, updatedAt: serverTimestamp() });
+    const activity = [...(ticket.activity||[])];
+    if (activityMsg) activity.push(logActivity(activityMsg));
+    await updateDoc(doc(db, "tickets", ticket.id), { ...updates, activity, updatedAt: serverTimestamp() });
     setSaving(false);
+  };
+
+  const handleStatusChange = async (newStatus) => {
+    await update({ status: newStatus }, `Status changed to ${STATUS[newStatus]?.label}`);
+    // Notify submitter if done or closed and they have an email
+    if ((newStatus === "done" || newStatus === "closed") && ticket.contact?.includes("@")) {
+      try {
+        await fetch("/api/notify-submitter", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "resolved",
+            submitter_email: ticket.contact,
+            location: ticket.location,
+            issue: ticket.issue,
+            status: STATUS[newStatus]?.label,
+            ticket_id: ticket.id,
+          }),
+        });
+      } catch(e) { console.error("Resolved notification failed:", e); }
+    }
+  };
+
+  const handleAssign = async (teamMember) => {
+    await update(
+      { assignedTo: teamMember },
+      teamMember ? `Assigned to ${teamMember.name}` : "Assignment removed"
+    );
+    if (teamMember) {
+      try {
+        await fetch("/api/notify-agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agent_email:     teamMember.email,
+            agent_name:      teamMember.name,
+            assigned_by:     agent.name,
+            submitter_name:  ticket.name,
+            location:        ticket.location,
+            issue:           ticket.issue,
+            priority:        ticket.priority || "normal",
+            due_date:        ticket.dueDate || "",
+            ticket_id:       ticket.id,
+          }),
+        });
+      } catch(e) { console.error("Assignment notification failed:", e); }
+    }
   };
 
   const addComment = async () => {
     if (!comment.trim()) return;
     const c = { id:"c"+Date.now(), author:agent.name, avatar:agent.avatar, text:comment.trim(), type:commentType, ts:new Date().toISOString() };
-    await update({ comments:[...(ticket.comments||[]), c] });
+    const activity = [...(ticket.activity||[]), logActivity(commentType==="reply"?"Replied to submitter":"Added internal note")];
+    await updateDoc(doc(db, "tickets", ticket.id), {
+      comments:[...(ticket.comments||[]), c],
+      activity,
+      updatedAt: serverTimestamp()
+    });
+    // Notify submitter on reply
+    if (commentType==="reply" && ticket.contact?.includes("@")) {
+      try {
+        await fetch("/api/notify-submitter", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "reply",
+            submitter_email: ticket.contact,
+            location: ticket.location,
+            issue: ticket.issue,
+            agent_name: agent.name,
+            message: comment.trim(),
+            ticket_id: ticket.id,
+          }),
+        });
+      } catch(e) { console.error("Reply notification failed:", e); }
+    }
     setComment("");
   };
 
@@ -477,30 +582,84 @@ function TicketDetail({ ticket, agent, onUpdate, onBack }) {
           )}
         </div>
 
+        {/* Priority + Due Date */}
         <div style={{ background:B.white, borderRadius:16, padding:"20px", marginBottom:14, border:`1px solid ${B.border}` }}>
-          <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:14 }}>Status & Assignment</div>
-          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
-            {Object.entries(STATUS).map(([key,val])=>(
-              <button key={key} onClick={()=>update({status:key})} style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 13px", borderRadius:8, border:`1.5px solid ${ticket.status===key?B.orange:B.border}`, background:ticket.status===key?B.orangeLight:B.white, cursor:"pointer", fontFamily:"inherit", fontSize:13, fontWeight:ticket.status===key?700:400, color:ticket.status===key?B.orange:B.text }}>
+          <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:14 }}>Priority & Due Date</div>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:16 }}>
+            {Object.entries(PRIORITY).map(([key,val])=>(
+              <button key={key} onClick={()=>update({priority:key},`Priority set to ${val.label}`)} style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 13px", borderRadius:8, border:`1.5px solid ${(ticket.priority||"normal")===key?B.orange:B.border}`, background:(ticket.priority||"normal")===key?B.orangeLight:B.white, cursor:"pointer", fontFamily:"inherit", fontSize:13, fontWeight:(ticket.priority||"normal")===key?700:400, color:(ticket.priority||"normal")===key?B.orange:B.text }}>
                 <span style={{ width:7, height:7, borderRadius:"50%", background:val.dot }} />{val.label}
               </button>
             ))}
           </div>
+          <div>
+            <label style={{ display:"block", fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:6 }}>Due Date <span style={{ fontWeight:400, textTransform:"none", color:B.muted }}>Optional</span></label>
+            <input type="date" value={ticket.dueDate||""} onChange={e=>update({dueDate:e.target.value},e.target.value?`Due date set to ${e.target.value}`:"Due date removed")}
+              style={{ ...INP(false), fontSize:13 }} />
+          </div>
+        </div>
+
+        {/* Status & Assignment */}
+        <div style={{ background:B.white, borderRadius:16, padding:"20px", marginBottom:14, border:`1px solid ${B.border}` }}>
+          <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:14 }}>Status</div>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:20 }}>
+            {Object.entries(STATUS).map(([key,val])=>(
+              <button key={key} onClick={()=>handleStatusChange(key)} style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 13px", borderRadius:8, border:`1.5px solid ${ticket.status===key?B.orange:B.border}`, background:ticket.status===key?B.orangeLight:B.white, cursor:"pointer", fontFamily:"inherit", fontSize:13, fontWeight:ticket.status===key?700:400, color:ticket.status===key?B.orange:B.text }}>
+                <span style={{ width:7, height:7, borderRadius:"50%", background:val.dot }} />{val.label}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:10 }}>Assign To</div>
+          <select value={ticket.assignedTo?.id||""} onChange={e=>{
+            const member = TEAM.find(m=>m.id===e.target.value)||null;
+            handleAssign(member);
+          }} style={{ width:"100%", padding:"10px 14px", borderRadius:10, border:`1.5px solid ${B.border}`, fontSize:13, color:B.text, background:B.white, fontFamily:"inherit", marginBottom:14, WebkitAppearance:"none" }}>
+            <option value="">Unassigned</option>
+            {TEAM.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+          {ticket.assignedTo && (
+            <div style={{ display:"flex", alignItems:"center", gap:8, background:B.offWhite, borderRadius:10, padding:"8px 12px", marginBottom:14 }}>
+              <Avatar initials={ticket.assignedTo.avatar} size={26} color={B.orange} />
+              <span style={{ fontSize:13, fontWeight:600, color:B.text }}>{ticket.assignedTo.name}</span>
+              <span style={{ fontSize:11, color:B.muted }}>assigned</span>
+            </div>
+          )}
+
+          <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:10 }}>Claim</div>
           {ticket.claimedBy ? (
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:B.offWhite, borderRadius:10, padding:"10px 14px" }}>
               <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                <Avatar initials={ticket.claimedBy.avatar} size={28} color={B.orange} />
+                <Avatar initials={ticket.claimedBy.avatar} size={28} color={B.navy} />
                 <span style={{ fontSize:13, fontWeight:600, color:B.text }}>{ticket.claimedBy.name}</span>
                 <span style={{ fontSize:11, color:B.muted }}>is on it</span>
               </div>
               {ticket.claimedBy.id===agent?.id && (
-                <button onClick={()=>update({claimedBy:null,status:"waiting"})} style={{ ...BTN.ghost, fontSize:12, padding:"5px 10px", borderRadius:7 }}>Release</button>
+                <button onClick={()=>update({claimedBy:null,status:"waiting"},"Released ticket")} style={{ ...BTN.ghost, fontSize:12, padding:"5px 10px", borderRadius:7 }}>Release</button>
               )}
             </div>
           ) : (
-            <button onClick={()=>update({claimedBy:agent,status:"on-it"})} style={{ ...BTN.orangeSolid, width:"100%", padding:"12px 0", borderRadius:10, fontSize:14 }}>» Claim This Ticket</button>
+            <button onClick={()=>update({claimedBy:agent,status:"on-it"},"Claimed ticket")} style={{ ...BTN.orangeSolid, width:"100%", padding:"12px 0", borderRadius:10, fontSize:14 }}>» Claim This Ticket</button>
           )}
         </div>
+
+        {/* Activity Log */}
+        {ticket.activity?.length > 0 && (
+          <div style={{ background:B.white, borderRadius:16, padding:"20px", marginBottom:14, border:`1px solid ${B.border}` }}>
+            <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:14 }}>Activity</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              {[...(ticket.activity||[])].reverse().map(a=>(
+                <div key={a.id} style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
+                  <div style={{ width:6, height:6, borderRadius:"50%", background:B.orange, marginTop:5, flexShrink:0 }} />
+                  <div style={{ flex:1 }}>
+                    <span style={{ fontSize:13, color:B.text }}>{a.action}</span>
+                    <span style={{ fontSize:11, color:B.muted, marginLeft:6 }}>by {a.agent} · {timeAgo(a.ts)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div style={{ background:B.white, borderRadius:16, padding:"20px", border:`1px solid ${B.border}` }}>
           <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:16 }}>
@@ -631,18 +790,22 @@ function AgentDashboard({ agent, tickets, onUpdate, onAdd, onLogout }) {
   const [search, setSearch]     = useState("");
 
   const counts = {
-    all:     tickets.length,
-    waiting: tickets.filter(t=>t.status==="waiting").length,
-    mine:    tickets.filter(t=>t.claimedBy?.id===agent.id).length,
-    done:    tickets.filter(t=>t.status==="done"||t.status==="closed").length,
+    all:      tickets.length,
+    waiting:  tickets.filter(t=>t.status==="waiting").length,
+    mine:     tickets.filter(t=>t.claimedBy?.id===agent.id).length,
+    assigned: tickets.filter(t=>t.assignedTo?.id===agent.id).length,
+    critical: tickets.filter(t=>t.priority==="critical").length,
+    done:     tickets.filter(t=>t.status==="done"||t.status==="closed").length,
   };
 
   const filtered = tickets.filter(t => {
     const matchTab =
-      tab==="all"     ? true :
-      tab==="waiting" ? t.status==="waiting" :
-      tab==="mine"    ? t.claimedBy?.id===agent.id :
-      tab==="done"    ? (t.status==="done"||t.status==="closed") : true;
+      tab==="all"      ? true :
+      tab==="waiting"  ? t.status==="waiting" :
+      tab==="mine"     ? t.claimedBy?.id===agent.id :
+      tab==="assigned" ? t.assignedTo?.id===agent.id :
+      tab==="critical" ? t.priority==="critical" :
+      tab==="done"     ? (t.status==="done"||t.status==="closed") : true;
     const s = search.toLowerCase();
     return matchTab && (!search || t.name.toLowerCase().includes(s) || t.issue.toLowerCase().includes(s) || t.location.toLowerCase().includes(s));
   });
@@ -683,7 +846,7 @@ function AgentDashboard({ agent, tickets, onUpdate, onAdd, onLogout }) {
         </div>
       </div>
       <div style={{ background:B.white, borderBottom:`1px solid ${B.border}`, padding:"0 16px", display:"flex", overflowX:"auto" }}>
-        {[["all","All"],["waiting","Waiting"],["mine","My Queue"],["done","Done"]].map(([key,label])=>(
+        {[["all","All"],["waiting","Waiting"],["mine","My Queue"],["assigned","Assigned to Me"],["critical","Critical"],["done","Done"]].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)} style={{ background:"none", border:"none", borderBottom:`2.5px solid ${tab===key?B.orange:"transparent"}`, padding:"13px 14px", fontSize:13, fontWeight:tab===key?700:500, color:tab===key?B.orange:B.textSub, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
             {label}{key!=="all"&&` (${counts[key]||0})`}
           </button>
@@ -723,14 +886,14 @@ const BTN = {
   ghost:       { background:B.white, color:B.textSub, border:`1.5px solid ${B.border}`, borderRadius:10, padding:"10px 20px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"'DM Sans',system-ui,sans-serif" },
 };
 
-// ── Root App — React Router with proper /agent route ─────────
-function AppInner() {
+// ── Root App — real Firebase wired up ────────────────────────
+export default function App() {
   const [user, setUser]       = useState(undefined); // undefined = loading
   const [agent, setAgent]     = useState(null);
   const [tickets, setTickets] = useState([]);
-  const navigate = useNavigate();
+  const [page, setPage]       = useState("public");
 
-  // ── Auth listener
+  // ── Auth listener — auto-redirect on refresh if already logged in
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser && firebaseUser.email?.endsWith("@godchasers.church")) {
@@ -743,16 +906,18 @@ function AppInner() {
         };
         setAgent(a);
         setUser(firebaseUser);
-        navigate("/agent");
+        // Auto-redirect to agent dashboard when Firebase confirms login
+        setPage("agent");
       } else {
         setAgent(null);
         setUser(null);
+        setPage("public");
       }
     });
     return unsub;
   }, []);
 
-  // ── Firestore real-time listener
+  // ── Firestore real-time listener (only when agent is logged in)
   useEffect(() => {
     if (!agent) return;
     const q = query(collection(db, "tickets"), orderBy("createdAt", "desc"));
@@ -766,15 +931,16 @@ function AppInner() {
   const handleSubmit = async (answers, photoFile) => {
     const ticketId = "t_" + Date.now();
     let photoURL   = null;
+
+    // Photo upload is non-blocking — ticket saves even if photo fails
     if (photoFile) {
       try {
-        console.log("Uploading photo, file type:", photoFile.type, "size:", photoFile.size);
         photoURL = await uploadPhoto(photoFile, ticketId);
-        console.log("Photo uploaded successfully:", photoURL);
       } catch (e) {
-        console.error("Photo upload failed:", e?.code, e?.message);
+        console.warn("Photo upload failed — saving ticket without photo:", e);
       }
     }
+
     const ticketData = {
       name:      answers.name     || "",
       contact:   answers.contact  || "",
@@ -787,7 +953,11 @@ function AppInner() {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
+
+    // Save to Firestore
     const docRef = await addDoc(collection(db, "tickets"), ticketData);
+
+    // Send to Planning Center via serverless function
     try {
       await fetch("/api/submit-ticket", {
         method: "POST",
@@ -795,11 +965,12 @@ function AppInner() {
         body: JSON.stringify({ ...ticketData, firestoreId: docRef.id, createdAt: new Date().toISOString() }),
       });
     } catch (e) {
-      console.error("Email notification failed:", e);
+      console.error("PC sync failed:", e);
+      // Non-fatal — ticket is already in Firestore
     }
   };
 
-  // ── Update ticket
+  // ── Update ticket (agent actions)
   const handleUpdate = async (id, updates) => {
     await updateDoc(doc(db, "tickets", id), { ...updates, updatedAt: serverTimestamp() });
   };
@@ -826,10 +997,10 @@ function AppInner() {
     await addDoc(collection(db, "tickets"), ticketData);
   };
 
-  const handleLogin  = (a) => { setAgent(a); navigate("/agent"); };
-  const handleLogout = async () => { await signOut(auth); setAgent(null); navigate("/"); };
+  const handleLogin  = (a) => { setAgent(a); setPage("agent"); };
+  const handleLogout = async () => { await signOut(auth); setAgent(null); setPage("public"); };
 
-  // Loading screen while Firebase checks auth
+  // Loading state while Firebase checks auth
   if (user === undefined) return (
     <div style={{ minHeight:"100vh", background:`linear-gradient(160deg,${B.deep} 0%,${B.navy} 100%)`, display:"flex", alignItems:"center", justifyContent:"center" }}>
       <div style={{ textAlign:"center" }}>
@@ -839,33 +1010,28 @@ function AppInner() {
     </div>
   );
 
-  return (
-    <Routes>
-      {/* Public form — anyone can access */}
-      <Route path="/" element={<PublicForm onSubmit={handleSubmit} />} />
-
-      {/* Agent login — redirects to /agent if already logged in */}
-      <Route path="/agent/login" element={
-        agent ? <Navigate to="/agent" replace /> : <GoogleLogin onLogin={handleLogin} />
-      } />
-
-      {/* Agent dashboard — redirects to login if not authenticated */}
-      <Route path="/agent" element={
-        agent
-          ? <AgentDashboard agent={agent} tickets={tickets} onUpdate={handleUpdate} onAdd={handleAdd} onLogout={handleLogout} />
-          : <Navigate to="/agent/login" replace />
-      } />
-
-      {/* Catch-all — redirect to home */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+  // If agent is logged in, always show dashboard regardless of page state
+  if (agent) return (
+    <AgentDashboard
+      agent={agent}
+      tickets={tickets}
+      onUpdate={handleUpdate}
+      onAdd={handleAdd}
+      onLogout={handleLogout}
+    />
   );
-}
 
-export default function App() {
   return (
-    <BrowserRouter>
-      <AppInner />
-    </BrowserRouter>
+    <div style={{ fontFamily:"'DM Sans',system-ui,sans-serif" }}>
+      {/* Demo switcher — remove before handing off to church */}
+      {page !== "login" && (
+        <div style={{ position:"fixed", bottom:16, right:16, zIndex:200, display:"flex", gap:8 }}>
+          <button style={{ ...BTN.ghost, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.12)" }} onClick={()=>setPage("public")}>👤 User</button>
+          <button style={{ ...BTN.orangeSolid, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.15)" }} onClick={()=>setPage("login")}>🔒 Agent</button>
+        </div>
+      )}
+      {page === "public" && <PublicForm onSubmit={handleSubmit} />}
+      {page === "login"  && <GoogleLogin onLogin={handleLogin} />}
+    </div>
   );
 }

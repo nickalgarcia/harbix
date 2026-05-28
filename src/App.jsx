@@ -8,6 +8,7 @@ import {
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { auth, db, storage, googleProvider } from "./firebase";
+import HarbixInventory from "./HarbixInventory";
 
 // ── Brand ─────────────────────────────────────────────────────
 const B = {
@@ -787,7 +788,7 @@ function NewTicketModal({ agent, onClose, onSubmit }) {
 }
 
 // ── Agent Dashboard ───────────────────────────────────────────
-function AgentDashboard({ agent, tickets, onUpdate, onAdd, onLogout }) {
+function AgentDashboard({ agent, tickets, onUpdate, onAdd, onLogout, onInventory }) {
   const [tab, setTab]           = useState("all");
   const [view, setView]         = useState("card");
   const [selected, setSelected] = useState(null);
@@ -831,6 +832,7 @@ function AgentDashboard({ agent, tickets, onUpdate, onAdd, onLogout }) {
         <HarbixLogo dark size="sm" />
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <button style={{ ...BTN.orangeSolid, fontSize:13, padding:"7px 14px", borderRadius:8 }} onClick={()=>setShowNew(true)}>+ New</button>
+          <button style={{ ...BTN.ghost, fontSize:13, padding:"7px 14px", borderRadius:8, background:"rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.7)", border:"1.5px solid rgba(255,255,255,0.15)" }} onClick={onInventory}>📦 Inventory</button>
           <div style={{ display:"flex", alignItems:"center", gap:7, cursor:"pointer" }} onClick={onLogout}>
             {agent.photo
               ? <img src={agent.photo} alt="avatar" style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover" }} />
@@ -1015,16 +1017,20 @@ export default function App() {
     </div>
   );
 
-  // If agent is logged in, always show dashboard regardless of page state
-  if (agent) return (
-    <AgentDashboard
-      agent={agent}
-      tickets={tickets}
-      onUpdate={handleUpdate}
-      onAdd={handleAdd}
-      onLogout={handleLogout}
-    />
-  );
+  // If agent is logged in, show dashboard or inventory depending on page
+  if (agent) {
+    if (page === "inventory") return <HarbixInventory onBack={() => setPage("agent")} />;
+    return (
+      <AgentDashboard
+        agent={agent}
+        tickets={tickets}
+        onUpdate={handleUpdate}
+        onAdd={handleAdd}
+        onLogout={handleLogout}
+        onInventory={() => setPage("inventory")}
+      />
+    );
+  }
 
   return (
     <div style={{ fontFamily:"'DM Sans',system-ui,sans-serif" }}>

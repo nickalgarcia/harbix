@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
   collection, addDoc, getDocs, doc,
   updateDoc, query, orderBy, serverTimestamp, onSnapshot
@@ -7,7 +7,6 @@ import QRCode from "qrcode";
 import { db } from "./firebase";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "avteam2024";
 const NOTIFY_EMAIL = "tech@godchasers.church";
 const BASE_URL = typeof window !== "undefined" ? window.location.origin : "https://harbix.vercel.app";
 
@@ -158,7 +157,7 @@ const S = {
     borderRadius: "8px",
     color: "#e8e4de",
     padding: "10px 14px",
-    fontSize: "14px",
+    fontSize: "16px",
     outline: "none",
     boxSizing: "border-box",
     transition: "border-color 0.15s",
@@ -170,7 +169,7 @@ const S = {
     borderRadius: "8px",
     color: "#e8e4de",
     padding: "10px 14px",
-    fontSize: "14px",
+    fontSize: "16px",
     outline: "none",
     boxSizing: "border-box",
     appearance: "none",
@@ -273,9 +272,8 @@ export default function HarbixInventory({ onBack }) {
     ? path.replace("/inventory/asset/", "")
     : null;
 
-  const [view, setView] = useState(assetIdFromPath ? "checkout_public" : "list");
+  const [view, setView] = useState(assetIdFromPath ? "checkout_public" : "admin");
   const [publicAssetId, setPublicAssetId] = useState(assetIdFromPath);
-  const [adminAuthed, setAdminAuthed] = useState(false);
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedAsset, setSelectedAsset] = useState(null);
@@ -299,23 +297,17 @@ export default function HarbixInventory({ onBack }) {
     <div style={S.page}>
       <Header
         view={view}
-        adminAuthed={adminAuthed}
-        onAdmin={() => navigate(adminAuthed ? "admin" : "admin_login")}
-        onHome={() => navigate("list")}
+        onHome={() => navigate("admin")}
         onBack={onBack}
       />
       {loading && view !== "checkout_public" ? (
         <LoadingScreen />
-      ) : view === "list" ? (
-        <AssetList assets={assets} onCheckout={(a) => navigate("checkout", a)} onAdmin={() => navigate(adminAuthed ? "admin" : "admin_login")} />
+      ) : view === "admin" ? (
+        <AdminDashboard assets={assets} onAdd={() => navigate("add")} onBack={onBack} onCheckout={(a) => navigate("checkout", a)} />
       ) : view === "checkout" ? (
-        <CheckoutFlow asset={selectedAsset} onBack={() => navigate("list")} onDone={() => navigate("list")} />
+        <CheckoutFlow asset={selectedAsset} onBack={() => navigate("admin")} onDone={() => navigate("admin")} />
       ) : view === "checkout_public" ? (
         <CheckoutPublic assetId={publicAssetId} assets={assets} loading={loading} />
-      ) : view === "admin_login" ? (
-        <AdminLogin onSuccess={() => { setAdminAuthed(true); navigate("admin"); }} />
-      ) : view === "admin" ? (
-        <AdminDashboard assets={assets} onAdd={() => navigate("add")} onBack={() => navigate("list")} />
       ) : view === "add" ? (
         <AddAsset assets={assets} onBack={() => navigate("admin")} onSaved={() => navigate("admin")} />
       ) : null}
@@ -324,7 +316,7 @@ export default function HarbixInventory({ onBack }) {
 }
 
 // ─── Header ──────────────────────────────────────────────────────────────────
-function Header({ view, adminAuthed, onAdmin, onHome, onBack }) {
+function Header({ view, onHome, onBack }) {
   return (
     <div style={S.header}>
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -334,17 +326,12 @@ function Header({ view, adminAuthed, onAdmin, onHome, onBack }) {
           </button>
         )}
         <div style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }} onClick={onHome}>
-        <div style={S.logoMark}>H</div>
-        <span style={S.logoText}>
-          harbix <span style={S.logoSub}>inventory</span>
-        </span>
+          <div style={S.logoMark}>H</div>
+          <span style={S.logoText}>
+            harbix <span style={S.logoSub}>inventory</span>
+          </span>
         </div>
       </div>
-      {view !== "checkout_public" && (
-        <button onClick={onAdmin} style={{ ...S.btnGhost, padding: "6px 14px", fontSize: "13px" }}>
-          {adminAuthed ? "Admin" : "Sign in"}
-        </button>
-      )}
     </div>
   );
 }
@@ -621,40 +608,8 @@ function CheckoutPublic({ assetId, assets, loading }) {
   );
 }
 
-// ─── Admin Login ──────────────────────────────────────────────────────────────
-function AdminLogin({ onSuccess }) {
-  const [pw, setPw] = useState("");
-  const [error, setError] = useState("");
-
-  const attempt = () => {
-    if (pw === ADMIN_PASSWORD) { onSuccess(); }
-    else { setError("Incorrect password."); setPw(""); }
-  };
-
-  return (
-    <div style={{ ...S.container, maxWidth: "360px" }}>
-      <div style={S.card}>
-        <div style={{ fontSize: "16px", fontWeight: "500", marginBottom: "20px" }}>Admin access</div>
-        <input
-          style={S.input}
-          type="password"
-          placeholder="Password"
-          value={pw}
-          onChange={(e) => setPw(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && attempt()}
-          autoFocus
-        />
-        {error && <div style={{ color: "#e24b4a", fontSize: "13px", marginTop: "8px" }}>{error}</div>}
-        <button style={{ ...S.btn, width: "100%", marginTop: "16px" }} onClick={attempt}>
-          Sign in
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
-function AdminDashboard({ assets, onAdd, onBack }) {
+function AdminDashboard({ assets, onAdd, onBack, onCheckout }) {
   const [tab, setTab] = useState("assets");
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [statusFilter, setStatusFilter] = useState("All");
@@ -665,22 +620,39 @@ function AdminDashboard({ assets, onAdd, onBack }) {
     await updateDoc(doc(db, "inventory", asset.id), { status: newStatus });
   };
 
+  const counts = {
+    total: assets.length,
+    available: assets.filter((a) => a.status === "available").length,
+    checked_out: assets.filter((a) => a.status === "checked_out").length,
+    needs_repair: assets.filter((a) => a.status === "needs_repair").length,
+  };
+
   return (
     <div style={S.container}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-        <div style={{ fontSize: "20px", fontWeight: "500" }}>Admin</div>
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button style={S.btnGhost} onClick={onBack}>← Back</button>
-          <button style={S.btn} onClick={onAdd}>+ Add asset</button>
-        </div>
+      {/* Summary stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "12px", marginBottom: "24px" }}>
+        {[
+          { label: "Total Assets", value: counts.total, color: "#e8e4de" },
+          { label: "Available", value: counts.available, color: "#639922" },
+          { label: "Checked Out", value: counts.checked_out, color: "#ba7517" },
+          { label: "Needs Repair", value: counts.needs_repair, color: "#e24b4a" },
+        ].map((s) => (
+          <div key={s.label} style={{ background: "#161616", border: "1px solid #2a2a2a", borderRadius: "10px", padding: "14px 16px" }}>
+            <div style={{ fontSize: "11px", color: "#666", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>{s.label}</div>
+            <div style={{ fontSize: "24px", fontWeight: "600", color: s.color }}>{s.value}</div>
+          </div>
+        ))}
       </div>
 
-      <div style={{ display: "flex", gap: "6px", marginBottom: "20px" }}>
-        {["assets", "checkouts"].map((t) => (
-          <button key={t} style={S.tab(tab === t)} onClick={() => setTab(t)}>
-            {t === "assets" ? "All assets" : "Checkout log"}
-          </button>
-        ))}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+        <div style={{ display: "flex", gap: "6px" }}>
+          {["assets", "checkouts"].map((t) => (
+            <button key={t} style={S.tab(tab === t)} onClick={() => setTab(t)}>
+              {t === "assets" ? "All assets" : "Checkout log"}
+            </button>
+          ))}
+        </div>
+        <button style={S.btn} onClick={onAdd}>+ Add asset</button>
       </div>
 
       {tab === "assets" && (

@@ -1007,6 +1007,11 @@ export default function App() {
   const handleLogin  = (a) => { setAgent(a); setPage("agent"); };
   const handleLogout = async () => { await signOut(auth); setAgent(null); setPage("public"); };
 
+  // ── QR scan intercept — render inventory checkout directly, no auth needed
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/inventory/asset/")) {
+    return <HarbixInventory />;
+  }
+
   // Loading state while Firebase checks auth
   if (user === undefined) return (
     <div style={{ minHeight:"100vh", background:`linear-gradient(160deg,${B.deep} 0%,${B.navy} 100%)`, display:"flex", alignItems:"center", justifyContent:"center" }}>

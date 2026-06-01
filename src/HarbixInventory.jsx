@@ -741,9 +741,14 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
       </div>
       {expanded && (
         <div style={{ padding: "0 20px 20px", borderTop: "1px solid #1e1e1e" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginTop: "16px" }}>
+          <div style={{
+            display: "flex",
+            flexDirection: window.innerWidth < 600 ? "column-reverse" : "row",
+            gap: "20px",
+            marginTop: "16px",
+          }}>
             {/* Left: details + status control */}
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: "12px", color: "#666", marginBottom: "12px", lineHeight: "1.8" }}>
                 {asset.serialNumber && <div>Serial: <span style={{ color: "#aaa" }}>{asset.serialNumber}</span></div>}
                 {asset.condition && <div>Condition: <span style={{ color: "#aaa" }}>{asset.condition}</span></div>}
@@ -793,11 +798,20 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
               </div>
             </div>
             {/* Right: QR code */}
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+            <div style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: window.innerWidth < 600 ? "center" : "flex-end",
+            }}>
               {qrUrl ? (
                 <>
-                  <img src={qrUrl} alt="QR code" style={{ width: "120px", height: "120px", borderRadius: "8px", marginBottom: "8px" }} />
-                  <div style={{ fontSize: "11px", color: "#555", textAlign: "center", marginBottom: "10px", fontFamily: "monospace" }}>
+                  <img src={qrUrl} alt="QR code" style={{
+                    width: window.innerWidth < 600 ? "180px" : "120px",
+                    height: window.innerWidth < 600 ? "180px" : "120px",
+                    borderRadius: "8px",
+                    marginBottom: "8px",
+                  }} />
+                  <div style={{ fontSize: "11px", color: "#555", textAlign: "center", marginBottom: "10px", fontFamily: "monospace", wordBreak: "break-all" }}>
                     {BASE_URL}/inventory/asset/{asset.assetId}
                   </div>
                   <button style={{ ...S.btnGhost, fontSize: "12px", padding: "6px 12px" }} onClick={printLabel}>
@@ -863,6 +877,16 @@ function CheckoutLog({ assets }) {
   );
 }
 
+// ─── Field wrapper ────────────────────────────────────────────────────────────
+function Field({ label, children }) {
+  return (
+    <div style={{ marginBottom: "16px" }}>
+      <label style={S.label}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
 // ─── Add Asset ────────────────────────────────────────────────────────────────
 function AddAsset({ assets, onBack, onSaved }) {
   const [form, setForm] = useState({
@@ -900,13 +924,6 @@ function AddAsset({ assets, onBack, onSaved }) {
     }
     setSaving(false);
   };
-
-  const Field = ({ label, children }) => (
-    <div style={{ marginBottom: "16px" }}>
-      <label style={S.label}>{label}</label>
-      {children}
-    </div>
-  );
 
   return (
     <div style={{ ...S.container, maxWidth: "560px" }}>

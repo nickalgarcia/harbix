@@ -613,8 +613,12 @@ function AdminDashboard({ assets, onAdd, onBack, onCheckout }) {
   const [tab, setTab] = useState("assets");
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [statusFilter, setStatusFilter] = useState("All");
+  const [search, setSearch] = useState("");
+  const [collapsedCategories, setCollapsedCategories] = useState({});
 
-  const filtered = statusFilter === "All" ? assets : assets.filter((a) => a.status === statusFilter);
+  // Filter bug fix: reset selected asset when filter or search changes
+  const setStatusFilterSafe = (val) => { setStatusFilter(val); setSelectedAsset(null); };
+  const setSearchSafe = (val) => { setSearch(val); setSelectedAsset(null); };
 
   const handleStatusChange = async (asset, newStatus) => {
     await updateDoc(doc(db, "inventory", asset.id), { status: newStatus });
@@ -626,6 +630,25 @@ function AdminDashboard({ assets, onAdd, onBack, onCheckout }) {
     checked_out: assets.filter((a) => a.status === "checked_out").length,
     needs_repair: assets.filter((a) => a.status === "needs_repair").length,
   };
+
+  // Apply status + search filters
+  const filtered = assets.filter((a) => {
+    const matchStatus = statusFilter === "All" || a.status === statusFilter;
+    const q = search.toLowerCase();
+    const matchSearch = !q || a.name?.toLowerCase().includes(q) || a.assetId?.toLowerCase().includes(q) || a.location?.toLowerCase().includes(q);
+    return matchStatus && matchSearch;
+  });
+
+  // Group by category
+  const grouped = filtered.reduce((acc, asset) => {
+    const cat = asset.category || "Other";
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(asset);
+    return acc;
+  }, {});
+  const categories = Object.keys(grouped).sort();
+
+  const toggleCategory = (cat) => setCollapsedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
 
   return (
     <div style={S.container}>
@@ -644,7 +667,7 @@ function AdminDashboard({ assets, onAdd, onBack, onCheckout }) {
         ))}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
         <div style={{ display: "flex", gap: "6px" }}>
           {["assets", "checkouts"].map((t) => (
             <button key={t} style={S.tab(tab === t)} onClick={() => setTab(t)}>
@@ -657,33 +680,68 @@ function AdminDashboard({ assets, onAdd, onBack, onCheckout }) {
 
       {tab === "assets" && (
         <>
-          <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
-            {["All", "available", "checked_out", "needs_repair", "retired"].map((s) => (
-              <button
-                key={s}
-                style={{ ...S.tab(statusFilter === s), fontSize: "12px", padding: "6px 12px" }}
-                onClick={() => setStatusFilter(s)}
-              >
-                {s === "All" ? "All" : STATUS_COLORS[s]?.label}
-              </button>
-            ))}
+          {/* Search + status filters */}
+          <div style={{ marginBottom: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
+            <input
+              style={{ ...S.input, fontSize: "14px" }}
+              placeholder="Search by name, ID, or location…"
+              value={search}
+              onChange={(e) => setSearchSafe(e.target.value)}
+            />
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+              {["All", "available", "checked_out", "needs_repair", "retired"].map((s) => (
+                <button
+                  key={s}
+                  style={{ ...S.tab(statusFilter === s), fontSize: "12px", padding: "6px 12px" }}
+                  onClick={() => setStatusFilterSafe(s)}
+                >
+                  {s === "All" ? `All (${assets.length})` : `${STATUS_COLORS[s]?.label} (${assets.filter(a => a.status === s).length})`}
+                </button>
+              ))}
+            </div>
           </div>
-          <div style={{ background: "#161616", border: "1px solid #2a2a2a", borderRadius: "12px", overflow: "hidden" }}>
-            {filtered.length === 0 ? (
-              <div style={{ padding: "40px", textAlign: "center", color: "#444" }}>No assets found.</div>
-            ) : (
-              filtered.map((asset, i) => (
-                <AdminAssetRow
-                  key={asset.id}
-                  asset={asset}
-                  last={i === filtered.length - 1}
-                  onStatusChange={handleStatusChange}
-                  onSelect={() => setSelectedAsset(selectedAsset?.id === asset.id ? null : asset)}
-                  expanded={selectedAsset?.id === asset.id}
-                />
-              ))
-            )}
-          </div>
+
+          {/* Grouped by category */}
+          {filtered.length === 0 ? (
+            <div style={{ padding: "40px", textAlign: "center", color: "#444", background: "#161616", border: "1px solid #2a2a2a", borderRadius: "12px" }}>
+              {search ? `No assets matching "${search}"` : "No assets found."}
+            </div>
+          ) : (
+            categories.map((cat) => {
+              const catAssets = grouped[cat];
+              const isCollapsed = collapsedCategories[cat];
+              return (
+                <div key={cat} style={{ marginBottom: "12px" }}>
+                  {/* Category header */}
+                  <div
+                    onClick={() => toggleCategory(cat)}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: isCollapsed ? "10px" : "10px 10px 0 0", cursor: "pointer", userSelect: "none" }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <span style={{ fontSize: "13px", fontWeight: "600", color: "#e8e4de" }}>{cat}</span>
+                      <span style={{ fontSize: "11px", color: "#555", background: "#222", padding: "2px 8px", borderRadius: "10px" }}>{catAssets.length}</span>
+                    </div>
+                    <span style={{ color: "#444", fontSize: "11px" }}>{isCollapsed ? "▼" : "▲"}</span>
+                  </div>
+                  {/* Assets in category */}
+                  {!isCollapsed && (
+                    <div style={{ background: "#161616", border: "1px solid #2a2a2a", borderTop: "none", borderRadius: "0 0 10px 10px", overflow: "hidden" }}>
+                      {catAssets.map((asset, i) => (
+                        <AdminAssetRow
+                          key={asset.id}
+                          asset={asset}
+                          last={i === catAssets.length - 1}
+                          onStatusChange={handleStatusChange}
+                          onSelect={() => setSelectedAsset(selectedAsset?.id === asset.id ? null : asset)}
+                          expanded={selectedAsset?.id === asset.id}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </>
       )}
 
@@ -697,47 +755,6 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
   const [qrUrl, setQrUrl] = useState(null);
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({});
-  const [saving, setSaving] = useState(false);
-
-  const startEdit = (e) => {
-    e.stopPropagation();
-    setEditForm({
-      name: asset.name || "",
-      category: asset.category || "iPad",
-      location: asset.location || "The Nexus",
-      condition: asset.condition || "Good",
-      serialNumber: asset.serialNumber || "",
-      notes: asset.notes || "",
-      purchaseDate: asset.purchaseDate || "",
-    });
-    setEditing(true);
-  };
-
-  const cancelEdit = (e) => {
-    e?.stopPropagation();
-    setEditing(false);
-  };
-
-  const saveEdit = async (e) => {
-    e.stopPropagation();
-    if (!editForm.name.trim()) return;
-    setSaving(true);
-    try {
-      await updateDoc(doc(db, "inventory", asset.id), {
-        ...editForm,
-        name: editForm.name.trim(),
-        updatedAt: serverTimestamp(),
-      });
-      setEditing(false);
-    } catch (err) {
-      console.error("Failed to update asset:", err);
-    }
-    setSaving(false);
-  };
-
-  const setF = (k, v) => setEditForm((f) => ({ ...f, [k]: v }));
 
   const loadDetails = async () => {
     if (!expanded) {
@@ -778,67 +795,10 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
             <div style={{ fontSize: "12px", color: "#555" }}>{asset.assetId} · {asset.category} · {asset.location}</div>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          {expanded && !editing && (
-            <button
-              style={{ ...S.btnGhost, fontSize: "12px", padding: "4px 10px" }}
-              onClick={startEdit}
-            >
-              ✏️ Edit
-            </button>
-          )}
-          <span style={{ color: "#444", fontSize: "12px" }}>{expanded ? "▲" : "▼"}</span>
-        </div>
+        <span style={{ color: "#444", fontSize: "12px" }}>{expanded ? "▲" : "▼"}</span>
       </div>
       {expanded && (
         <div style={{ padding: "0 20px 20px", borderTop: "1px solid #1e1e1e" }}>
-
-          {/* ── Edit form ── */}
-          {editing ? (
-            <div style={{ marginTop: "16px" }} onClick={(e) => e.stopPropagation()}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <Field label="Asset name *">
-                    <input style={S.input} value={editForm.name} onChange={(e) => setF("name", e.target.value)} />
-                  </Field>
-                </div>
-                <Field label="Category">
-                  <select style={S.select} value={editForm.category} onChange={(e) => setF("category", e.target.value)}>
-                    {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-                  </select>
-                </Field>
-                <Field label="Location">
-                  <select style={S.select} value={editForm.location} onChange={(e) => setF("location", e.target.value)}>
-                    {LOCATIONS.map((l) => <option key={l}>{l}</option>)}
-                  </select>
-                </Field>
-                <Field label="Condition">
-                  <select style={S.select} value={editForm.condition} onChange={(e) => setF("condition", e.target.value)}>
-                    {CONDITIONS.map((c) => <option key={c}>{c}</option>)}
-                  </select>
-                </Field>
-                <Field label="Serial number">
-                  <input style={S.input} value={editForm.serialNumber} onChange={(e) => setF("serialNumber", e.target.value)} placeholder="Optional" />
-                </Field>
-                <Field label="Purchase date">
-                  <input style={S.input} type="date" value={editForm.purchaseDate} onChange={(e) => setF("purchaseDate", e.target.value)} />
-                </Field>
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <Field label="Notes">
-                    <textarea style={{ ...S.input, height: "72px", resize: "vertical" }} value={editForm.notes} onChange={(e) => setF("notes", e.target.value)} placeholder="Anything the team should know" />
-                  </Field>
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
-                <button style={S.btnGhost} onClick={cancelEdit}>Cancel</button>
-                <button style={{ ...S.btn, opacity: saving ? 0.6 : 1 }} onClick={saveEdit} disabled={saving}>
-                  {saving ? "Saving…" : "Save changes"}
-                </button>
-              </div>
-            </div>
-          ) : (
-
-          /* ── Read view ── */
           <div style={{
             display: "flex",
             flexDirection: window.innerWidth < 600 ? "column-reverse" : "row",
@@ -921,7 +881,6 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
               )}
             </div>
           </div>
-          )}
         </div>
       )}
     </div>

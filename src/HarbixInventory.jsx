@@ -697,6 +697,47 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
   const [qrUrl, setQrUrl] = useState(null);
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = (e) => {
+    e.stopPropagation();
+    setEditForm({
+      name: asset.name || "",
+      category: asset.category || "iPad",
+      location: asset.location || "The Nexus",
+      condition: asset.condition || "Good",
+      serialNumber: asset.serialNumber || "",
+      notes: asset.notes || "",
+      purchaseDate: asset.purchaseDate || "",
+    });
+    setEditing(true);
+  };
+
+  const cancelEdit = (e) => {
+    e?.stopPropagation();
+    setEditing(false);
+  };
+
+  const saveEdit = async (e) => {
+    e.stopPropagation();
+    if (!editForm.name.trim()) return;
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "inventory", asset.id), {
+        ...editForm,
+        name: editForm.name.trim(),
+        updatedAt: serverTimestamp(),
+      });
+      setEditing(false);
+    } catch (err) {
+      console.error("Failed to update asset:", err);
+    }
+    setSaving(false);
+  };
+
+  const setF = (k, v) => setEditForm((f) => ({ ...f, [k]: v }));
 
   const loadDetails = async () => {
     if (!expanded) {
@@ -737,10 +778,67 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
             <div style={{ fontSize: "12px", color: "#555" }}>{asset.assetId} · {asset.category} · {asset.location}</div>
           </div>
         </div>
-        <span style={{ color: "#444", fontSize: "12px" }}>{expanded ? "▲" : "▼"}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {expanded && !editing && (
+            <button
+              style={{ ...S.btnGhost, fontSize: "12px", padding: "4px 10px" }}
+              onClick={startEdit}
+            >
+              ✏️ Edit
+            </button>
+          )}
+          <span style={{ color: "#444", fontSize: "12px" }}>{expanded ? "▲" : "▼"}</span>
+        </div>
       </div>
       {expanded && (
         <div style={{ padding: "0 20px 20px", borderTop: "1px solid #1e1e1e" }}>
+
+          {/* ── Edit form ── */}
+          {editing ? (
+            <div style={{ marginTop: "16px" }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <Field label="Asset name *">
+                    <input style={S.input} value={editForm.name} onChange={(e) => setF("name", e.target.value)} />
+                  </Field>
+                </div>
+                <Field label="Category">
+                  <select style={S.select} value={editForm.category} onChange={(e) => setF("category", e.target.value)}>
+                    {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </Field>
+                <Field label="Location">
+                  <select style={S.select} value={editForm.location} onChange={(e) => setF("location", e.target.value)}>
+                    {LOCATIONS.map((l) => <option key={l}>{l}</option>)}
+                  </select>
+                </Field>
+                <Field label="Condition">
+                  <select style={S.select} value={editForm.condition} onChange={(e) => setF("condition", e.target.value)}>
+                    {CONDITIONS.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </Field>
+                <Field label="Serial number">
+                  <input style={S.input} value={editForm.serialNumber} onChange={(e) => setF("serialNumber", e.target.value)} placeholder="Optional" />
+                </Field>
+                <Field label="Purchase date">
+                  <input style={S.input} type="date" value={editForm.purchaseDate} onChange={(e) => setF("purchaseDate", e.target.value)} />
+                </Field>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <Field label="Notes">
+                    <textarea style={{ ...S.input, height: "72px", resize: "vertical" }} value={editForm.notes} onChange={(e) => setF("notes", e.target.value)} placeholder="Anything the team should know" />
+                  </Field>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                <button style={S.btnGhost} onClick={cancelEdit}>Cancel</button>
+                <button style={{ ...S.btn, opacity: saving ? 0.6 : 1 }} onClick={saveEdit} disabled={saving}>
+                  {saving ? "Saving…" : "Save changes"}
+                </button>
+              </div>
+            </div>
+          ) : (
+
+          /* ── Read view ── */
           <div style={{
             display: "flex",
             flexDirection: window.innerWidth < 600 ? "column-reverse" : "row",
@@ -823,6 +921,7 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
               )}
             </div>
           </div>
+          )}
         </div>
       )}
     </div>

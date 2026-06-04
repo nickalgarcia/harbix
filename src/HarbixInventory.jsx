@@ -45,14 +45,120 @@ const STATUS_COLORS = {
   retired: { bg: "#f1efe8", text: "#5f5e5a", label: "Retired" },
 };
 
-// ─── EmailJS notification (reuses existing setup) ────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function formatCurrency(val) {
+  const n = parseFloat(val);
+  if (!val || isNaN(n)) return null;
+  return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
+
+function exportCSV(assets) {
+  const headers = ["Asset ID", "Name", "Category", "Location", "Status", "Condition", "Serial Number", "Purchase Date", "Purchase Value", "Notes"];
+  const rows = assets.map((a) => [
+    a.assetId,
+    a.name,
+    a.category,
+    a.location,
+    STATUS_COLORS[a.status]?.label || a.status,
+    a.condition,
+    a.serialNumber || "",
+    a.purchaseDate || "",
+    a.purchaseValue ? `$${parseFloat(a.purchaseValue).toFixed(2)}` : "",
+    (a.notes || "").replace(/,/g, ";"),
+  ]);
+  const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `GodChasers-Inventory-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportInsuranceReport(assets) {
+  const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const totalValue = assets.reduce((sum, a) => sum + (parseFloat(a.purchaseValue) || 0), 0);
+  const activeAssets = assets.filter((a) => a.status !== "retired");
+
+  const byLocation = activeAssets.reduce((acc, a) => {
+    const loc = a.location || "Unknown";
+    if (!acc[loc]) acc[loc] = [];
+    acc[loc].push(a);
+    return acc;
+  }, {});
+
+  const rows = Object.entries(byLocation).sort(([a], [b]) => a.localeCompare(b)).map(([loc, items]) => {
+    const locValue = items.reduce((s, a) => s + (parseFloat(a.purchaseValue) || 0), 0);
+    const itemRows = items.map((a) => `
+      <tr>
+        <td>${a.assetId}</td>
+        <td>${a.name}</td>
+        <td>${a.category}</td>
+        <td>${a.condition || "—"}</td>
+        <td>${a.serialNumber || "—"}</td>
+        <td>${a.purchaseDate || "—"}</td>
+        <td>${a.purchaseValue ? `$${parseFloat(a.purchaseValue).toLocaleString()}` : "—"}</td>
+      </tr>`).join("");
+    return `
+      <tr style="background:#f5f5f5;">
+        <td colspan="6" style="font-weight:600;padding:10px 8px;">${loc}</td>
+        <td style="font-weight:600;padding:10px 8px;">${locValue ? `$${locValue.toLocaleString()}` : "—"}</td>
+      </tr>
+      ${itemRows}`;
+  }).join("");
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>GodChasers Church — Inventory Report</title>
+  <style>
+    body { font-family: Arial, sans-serif; color: #111; padding: 40px; max-width: 1000px; margin: 0 auto; }
+    h1 { font-size: 22px; margin-bottom: 4px; }
+    .meta { color: #666; font-size: 13px; margin-bottom: 32px; }
+    .summary { display: flex; gap: 24px; margin-bottom: 32px; flex-wrap: wrap; }
+    .stat { background: #f5f5f5; border-radius: 8px; padding: 14px 20px; min-width: 140px; }
+    .stat-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { background: #111; color: #fff; padding: 10px 8px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+    td { padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+    .footer { margin-top: 40px; font-size: 11px; color: #aaa; border-top: 1px solid #eee; padding-top: 16px; }
+  </style>
+</head>
+<body>
+  <h1>GodChasers Church — Equipment Inventory</h1>
+  <div class="meta">Generated ${date} · For insurance and asset management purposes</div>
+  <div class="summary">
+    <div class="stat"><div class="stat-label">Total Active Assets</div><div class="stat-value">${activeAssets.length}</div></div>
+    <div class="stat"><div class="stat-label">Total Declared Value</div><div class="stat-value" style="color:#1a6b2a;">${totalValue ? `$${totalValue.toLocaleString()}` : "Not recorded"}</div></div>
+    <div class="stat"><div class="stat-label">Locations</div><div class="stat-value">${Object.keys(byLocation).length}</div></div>
+    <div class="stat"><div class="stat-label">Needs Repair</div><div class="stat-value" style="color:#a32d2d;">${assets.filter(a => a.status === "needs_repair").length}</div></div>
+  </div>
+  <table>
+    <thead><tr><th>Asset ID</th><th>Name</th><th>Category</th><th>Condition</th><th>Serial #</th><th>Purchase Date</th><th>Value</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="footer">GodChasers Church · Harbix Inventory System · harbix.vercel.app</div>
+</body>
+</html>`;
+
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  // Trigger print after load
+  if (win) win.onload = () => { win.print(); };
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+// ─── EmailJS notification ─────────────────────────────────────────────────────
 async function sendCheckoutEmail(asset, checkoutData) {
   try {
     const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
     const templateId = import.meta.env.VITE_EMAILJS_INVENTORY_TEMPLATE_ID || import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
     const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
     if (!serviceId || !templateId || !publicKey) return;
-
     await fetch("https://api.emailjs.com/api/v1.0/email/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -106,12 +212,6 @@ const S = {
     position: "sticky",
     top: 0,
     zIndex: 100,
-  },
-  logo: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    textDecoration: "none",
   },
   logoMark: {
     width: "28px",
@@ -224,20 +324,8 @@ const S = {
     background: STATUS_COLORS[status]?.bg || "#f1efe8",
     color: STATUS_COLORS[status]?.text || "#5f5e5a",
     letterSpacing: "0.02em",
+    whiteSpace: "nowrap",
   }),
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-    gap: "12px",
-  },
-  assetCard: {
-    background: "#161616",
-    border: "1px solid #2a2a2a",
-    borderRadius: "12px",
-    padding: "18px 20px",
-    cursor: "pointer",
-    transition: "border-color 0.15s, transform 0.1s",
-  },
   tab: (active) => ({
     padding: "8px 16px",
     borderRadius: "8px",
@@ -264,8 +352,7 @@ const S = {
   },
 };
 
-// ─── View router ─────────────────────────────────────────────────────────────
-// Supports: "list" | "checkout" | "admin" | "add" | "asset_detail"
+// ─── View router ──────────────────────────────────────────────────────────────
 export default function HarbixInventory({ onBack }) {
   const path = typeof window !== "undefined" ? window.location.pathname : "/";
   const assetIdFromPath = path.startsWith("/inventory/asset/")
@@ -273,12 +360,11 @@ export default function HarbixInventory({ onBack }) {
     : null;
 
   const [view, setView] = useState(assetIdFromPath ? "checkout_public" : "admin");
-  const [publicAssetId, setPublicAssetId] = useState(assetIdFromPath);
+  const [publicAssetId] = useState(assetIdFromPath);
   const [assets, setAssets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedAsset, setSelectedAsset] = useState(null);
 
-  // Live sync from Firestore
   useEffect(() => {
     const q = query(collection(db, "inventory"), orderBy("createdAt", "desc"));
     const unsub = onSnapshot(q, (snap) => {
@@ -295,11 +381,7 @@ export default function HarbixInventory({ onBack }) {
 
   return (
     <div style={S.page}>
-      <Header
-        view={view}
-        onHome={() => navigate("admin")}
-        onBack={onBack}
-      />
+      <Header view={view} onHome={() => navigate("admin")} onBack={onBack} />
       {loading && view !== "checkout_public" ? (
         <LoadingScreen />
       ) : view === "admin" ? (
@@ -327,9 +409,7 @@ function Header({ view, onHome, onBack }) {
         )}
         <div style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }} onClick={onHome}>
           <div style={S.logoMark}>H</div>
-          <span style={S.logoText}>
-            harbix <span style={S.logoSub}>inventory</span>
-          </span>
+          <span style={S.logoText}>harbix <span style={S.logoSub}>inventory</span></span>
         </div>
       </div>
     </div>
@@ -345,21 +425,59 @@ function LoadingScreen() {
   );
 }
 
-// ─── Asset List (public) ──────────────────────────────────────────────────────
-function AssetList({ assets, onCheckout, onAdmin }) {
+// ─── Public Checkout (via QR scan) ───────────────────────────────────────────
+function CheckoutPublic({ assetId, assets, loading }) {
+  const asset = assets.find((a) => a.assetId === assetId);
+  if (loading) return <div style={{ padding: "60px 24px", textAlign: "center", color: "#666" }}>Loading…</div>;
+  if (!asset) return (
+    <div style={{ padding: "60px 24px", textAlign: "center" }}>
+      <div style={{ fontSize: "18px", marginBottom: "8px" }}>Asset not found</div>
+      <div style={{ color: "#666", fontSize: "14px" }}>ID: {assetId}</div>
+    </div>
+  );
+  return (
+    <div style={{ padding: "24px", maxWidth: "440px", margin: "0 auto" }}>
+      <div style={{ ...S.card, marginBottom: "0" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
+          <div>
+            <div style={{ fontSize: "18px", fontWeight: "500", marginBottom: "4px" }}>{asset.name}</div>
+            <div style={{ fontSize: "12px", color: "#555", fontFamily: "monospace" }}>{asset.assetId}</div>
+          </div>
+          <span style={S.badge(asset.status)}>{STATUS_COLORS[asset.status]?.label}</span>
+        </div>
+        <div style={{ fontSize: "13px", color: "#666", marginBottom: "16px" }}>
+          {asset.category} · {asset.location}
+          {asset.condition && asset.condition !== "Good" && <span style={{ color: "#e24b4a" }}> · {asset.condition}</span>}
+        </div>
+        {asset.notes && (
+          <div style={{ background: "#1e1e1e", borderRadius: "8px", padding: "10px 12px", fontSize: "13px", color: "#888", marginBottom: "16px" }}>
+            {asset.notes}
+          </div>
+        )}
+      </div>
+      <CheckoutFlow asset={asset} onBack={() => window.location.href = "/"} onDone={() => window.location.href = "/"} />
+    </div>
+  );
+}
+
+// ─── Admin Dashboard ──────────────────────────────────────────────────────────
+function AdminDashboard({ assets, onAdd, onBack, onCheckout }) {
+  const [tab, setTab] = useState("assets");
+  const [selectedAsset, setSelectedAsset] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("All");
   const [search, setSearch] = useState("");
-  const [filterCat, setFilterCat] = useState("All");
-  const [filterStatus, setFilterStatus] = useState("All");
+  const [collapsedCategories, setCollapsedCategories] = useState({});
 
-  const categories = ["All", ...Array.from(new Set(assets.map((a) => a.category)))];
-  const statuses = ["All", "available", "checked_out", "needs_repair", "retired"];
+  const setStatusFilterSafe = (val) => { setStatusFilter(val); setSelectedAsset(null); };
+  const setSearchSafe = (val) => { setSearch(val); setSelectedAsset(null); };
 
-  const filtered = assets.filter((a) => {
-    const matchSearch = !search || a.name.toLowerCase().includes(search.toLowerCase()) || a.assetId?.toLowerCase().includes(search.toLowerCase());
-    const matchCat = filterCat === "All" || a.category === filterCat;
-    const matchStatus = filterStatus === "All" || a.status === filterStatus;
-    return matchSearch && matchCat && matchStatus;
-  });
+  const handleStatusChange = async (asset, newStatus) => {
+    await updateDoc(doc(db, "inventory", asset.id), { status: newStatus });
+  };
+
+  const totalValue = assets
+    .filter((a) => a.status !== "retired")
+    .reduce((sum, a) => sum + (parseFloat(a.purchaseValue) || 0), 0);
 
   const counts = {
     total: assets.length,
@@ -368,104 +486,421 @@ function AssetList({ assets, onCheckout, onAdmin }) {
     needs_repair: assets.filter((a) => a.status === "needs_repair").length,
   };
 
+  const filtered = assets.filter((a) => {
+    const matchStatus = statusFilter === "All" || a.status === statusFilter;
+    const q = search.toLowerCase();
+    const matchSearch = !q || a.name?.toLowerCase().includes(q) || a.assetId?.toLowerCase().includes(q) || a.location?.toLowerCase().includes(q);
+    return matchStatus && matchSearch;
+  });
+
+  const grouped = filtered.reduce((acc, asset) => {
+    const cat = asset.category || "Other";
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(asset);
+    return acc;
+  }, {});
+  const categories = Object.keys(grouped).sort();
+
+  const toggleCategory = (cat) => setCollapsedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
+
   return (
     <div style={S.container}>
-      {/* Summary row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "24px" }}>
+      {/* Summary stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "12px", marginBottom: "24px" }}>
         {[
           { label: "Total Assets", value: counts.total, color: "#e8e4de" },
           { label: "Available", value: counts.available, color: "#639922" },
           { label: "Checked Out", value: counts.checked_out, color: "#ba7517" },
           { label: "Needs Repair", value: counts.needs_repair, color: "#e24b4a" },
+          { label: "Declared Value", value: totalValue ? `$${totalValue.toLocaleString()}` : "—", color: "#7eb8f7", small: true },
         ].map((s) => (
           <div key={s.label} style={{ background: "#161616", border: "1px solid #2a2a2a", borderRadius: "10px", padding: "14px 16px" }}>
             <div style={{ fontSize: "11px", color: "#666", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>{s.label}</div>
-            <div style={{ fontSize: "24px", fontWeight: "600", color: s.color }}>{s.value}</div>
+            <div style={{ fontSize: s.small ? "18px" : "24px", fontWeight: "600", color: s.color }}>{s.value}</div>
           </div>
         ))}
       </div>
 
-      {/* Filters */}
-      <div style={{ display: "flex", gap: "10px", marginBottom: "20px", flexWrap: "wrap" }}>
-        <input
-          style={{ ...S.input, width: "200px", flex: "1 1 160px" }}
-          placeholder="Search assets…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select style={{ ...S.select, width: "140px" }} value={filterCat} onChange={(e) => setFilterCat(e.target.value)}>
-          {categories.map((c) => <option key={c}>{c}</option>)}
-        </select>
-        <select style={{ ...S.select, width: "140px" }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-          {statuses.map((s) => (
-            <option key={s} value={s}>{s === "All" ? "All Statuses" : STATUS_COLORS[s]?.label}</option>
+      {/* Tabs + actions */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+        <div style={{ display: "flex", gap: "6px" }}>
+          {["assets", "checkouts"].map((t) => (
+            <button key={t} style={S.tab(tab === t)} onClick={() => setTab(t)}>
+              {t === "assets" ? "All assets" : "Checkout log"}
+            </button>
           ))}
-        </select>
+        </div>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button style={{ ...S.btnGhost, fontSize: "13px", padding: "8px 14px" }} onClick={() => exportCSV(assets)} title="Download CSV for spreadsheet use">
+            ↓ CSV
+          </button>
+          <button style={{ ...S.btnGhost, fontSize: "13px", padding: "8px 14px" }} onClick={() => exportInsuranceReport(assets)} title="Print insurance report grouped by location">
+            🖨 Report
+          </button>
+          <button style={S.btn} onClick={onAdd}>+ Add asset</button>
+        </div>
       </div>
 
-      {/* Asset grid */}
-      {filtered.length === 0 ? (
-        <div style={{ textAlign: "center", color: "#444", padding: "60px 0" }}>
-          {assets.length === 0 ? (
-            <>
-              <div style={{ fontSize: "32px", marginBottom: "12px" }}>📦</div>
-              <div style={{ marginBottom: "8px" }}>No assets yet.</div>
-              <button style={S.btn} onClick={onAdmin}>Add your first asset</button>
-            </>
-          ) : "No assets match your filters."}
-        </div>
-      ) : (
-        <div style={S.grid}>
-          {filtered.map((asset) => (
-            <AssetCard key={asset.id} asset={asset} onCheckout={() => onCheckout(asset)} />
-          ))}
-        </div>
+      {tab === "assets" && (
+        <>
+          <div style={{ marginBottom: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
+            <input
+              style={{ ...S.input, fontSize: "14px" }}
+              placeholder="Search by name, ID, or location…"
+              value={search}
+              onChange={(e) => setSearchSafe(e.target.value)}
+            />
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+              {["All", "available", "checked_out", "needs_repair", "retired"].map((s) => (
+                <button
+                  key={s}
+                  style={{ ...S.tab(statusFilter === s), fontSize: "12px", padding: "6px 12px" }}
+                  onClick={() => setStatusFilterSafe(s)}
+                >
+                  {s === "All" ? `All (${assets.length})` : `${STATUS_COLORS[s]?.label} (${assets.filter(a => a.status === s).length})`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {filtered.length === 0 ? (
+            <div style={{ padding: "40px", textAlign: "center", color: "#444", background: "#161616", border: "1px solid #2a2a2a", borderRadius: "12px" }}>
+              {search ? `No assets matching "${search}"` : "No assets found."}
+            </div>
+          ) : (
+            categories.map((cat) => {
+              const catAssets = grouped[cat];
+              const isCollapsed = collapsedCategories[cat];
+              return (
+                <div key={cat} style={{ marginBottom: "12px" }}>
+                  <div
+                    onClick={() => toggleCategory(cat)}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: isCollapsed ? "10px" : "10px 10px 0 0", cursor: "pointer", userSelect: "none" }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <span style={{ fontSize: "13px", fontWeight: "600", color: "#e8e4de" }}>{cat}</span>
+                      <span style={{ fontSize: "11px", color: "#555", background: "#222", padding: "2px 8px", borderRadius: "10px" }}>{catAssets.length}</span>
+                    </div>
+                    <span style={{ color: "#444", fontSize: "11px" }}>{isCollapsed ? "▼" : "▲"}</span>
+                  </div>
+                  {!isCollapsed && (
+                    <div style={{ background: "#161616", border: "1px solid #2a2a2a", borderTop: "none", borderRadius: "0 0 10px 10px", overflow: "hidden" }}>
+                      {catAssets.map((asset, i) => (
+                        <AdminAssetRow
+                          key={asset.id}
+                          asset={asset}
+                          last={i === catAssets.length - 1}
+                          onStatusChange={handleStatusChange}
+                          onSelect={() => setSelectedAsset(selectedAsset?.id === asset.id ? null : asset)}
+                          expanded={selectedAsset?.id === asset.id}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </>
       )}
+
+      {tab === "checkouts" && <CheckoutLog assets={assets} />}
     </div>
   );
 }
 
-// ─── Asset Card ───────────────────────────────────────────────────────────────
-function AssetCard({ asset, onCheckout }) {
-  const [hovered, setHovered] = useState(false);
+// ─── Admin Asset Row ──────────────────────────────────────────────────────────
+function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
+  const [qrUrl, setQrUrl] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = (e) => {
+    e.stopPropagation();
+    setEditForm({
+      name: asset.name || "",
+      category: asset.category || "iPad",
+      location: asset.location || "The Nexus",
+      condition: asset.condition || "Good",
+      serialNumber: asset.serialNumber || "",
+      notes: asset.notes || "",
+      purchaseDate: asset.purchaseDate || "",
+      purchaseValue: asset.purchaseValue || "",
+    });
+    setEditing(true);
+  };
+
+  const cancelEdit = (e) => { e?.stopPropagation(); setEditing(false); };
+
+  const saveEdit = async (e) => {
+    e.stopPropagation();
+    if (!editForm.name.trim()) return;
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "inventory", asset.id), {
+        ...editForm,
+        name: editForm.name.trim(),
+        purchaseValue: editForm.purchaseValue ? parseFloat(editForm.purchaseValue) : null,
+        updatedAt: serverTimestamp(),
+      });
+      setEditing(false);
+    } catch (err) {
+      console.error("Failed to update asset:", err);
+    }
+    setSaving(false);
+  };
+
+  const setF = (k, v) => setEditForm((f) => ({ ...f, [k]: v }));
+
+  const loadDetails = async () => {
+    if (!expanded) {
+      if (!qrUrl) {
+        const url = await generateQRDataURL(asset.assetId);
+        setQrUrl(url);
+      }
+      setLoadingHistory(true);
+      const snap = await getDocs(query(collection(db, "inventory", asset.id, "history"), orderBy("timestamp", "desc")));
+      setHistory(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setLoadingHistory(false);
+    }
+    onSelect();
+  };
+
+  const printLabel = () => {
+    const win = window.open("", "_blank");
+    win.document.write(`
+      <html><body style="text-align:center;font-family:sans-serif;padding:20px;">
+        <img src="${qrUrl}" style="width:180px;height:180px;" /><br/>
+        <strong style="font-size:16px;">${asset.name}</strong><br/>
+        <span style="font-size:12px;color:#666;">${asset.assetId} · ${asset.location}</span>
+      </body></html>
+    `);
+    win.print();
+  };
+
+  const isMobile = window.innerWidth < 600;
+
   return (
-    <div
-      style={{ ...S.assetCard, borderColor: hovered ? "#3a3a3a" : "#2a2a2a", transform: hovered ? "translateY(-1px)" : "none" }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
-        <div>
-          <div style={{ fontSize: "15px", fontWeight: "500", marginBottom: "2px" }}>{asset.name}</div>
-          <div style={{ fontSize: "12px", color: "#555", fontFamily: "monospace" }}>{asset.assetId}</div>
+    <div style={{ borderBottom: last ? "none" : "1px solid #222" }}>
+      {/* Collapsed row */}
+      <div
+        style={{ padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
+        onClick={loadDetails}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "14px", flex: 1, minWidth: 0 }}>
+          <span style={S.badge(asset.status)}>{STATUS_COLORS[asset.status]?.label}</span>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: "14px", fontWeight: "500", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {asset.name}
+              {/* Show checked-out name inline */}
+              {asset.status === "checked_out" && asset.checkedOutTo?.name && (
+                <span style={{ fontSize: "12px", color: "#ba7517", fontWeight: "400", marginLeft: "8px" }}>
+                  → {asset.checkedOutTo.name}
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: "12px", color: "#555" }}>{asset.assetId} · {asset.location}</div>
+          </div>
         </div>
-        <span style={S.badge(asset.status)}>{STATUS_COLORS[asset.status]?.label}</span>
-      </div>
-      <div style={{ fontSize: "12px", color: "#666", marginBottom: "14px" }}>
-        {asset.category} · {asset.location}
-        {asset.serialNumber && <span> · S/N: {asset.serialNumber}</span>}
-      </div>
-      {asset.status === "checked_out" && asset.checkedOutTo && (
-        <div style={{ fontSize: "12px", color: "#ba7517", marginBottom: "10px", background: "#1e1800", borderRadius: "6px", padding: "6px 10px" }}>
-          Out: {asset.checkedOutTo.name}
-          {asset.checkedOutTo.date && ` · ${new Date(asset.checkedOutTo.date?.seconds ? asset.checkedOutTo.date.seconds * 1000 : asset.checkedOutTo.date).toLocaleDateString()}`}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+          {expanded && !editing && (
+            <button style={{ ...S.btnGhost, fontSize: "12px", padding: "4px 10px" }} onClick={startEdit}>
+              ✏️ Edit
+            </button>
+          )}
+          <span style={{ color: "#444", fontSize: "12px" }}>{expanded ? "▲" : "▼"}</span>
         </div>
-      )}
-      {asset.status === "available" && (
-        <button style={{ ...S.btn, width: "100%", padding: "8px" }} onClick={onCheckout}>
-          Check out
-        </button>
-      )}
-      {asset.status === "checked_out" && (
-        <button style={{ ...S.btnGhost, width: "100%", padding: "8px", fontSize: "13px" }} onClick={onCheckout}>
-          Return item
-        </button>
+      </div>
+
+      {/* Expanded content */}
+      {expanded && (
+        <div style={{ padding: "0 20px 20px", borderTop: "1px solid #1e1e1e" }}>
+          {editing ? (
+            // ── Edit form ──
+            <div style={{ marginTop: "16px" }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <Field label="Asset name *">
+                    <input style={S.input} value={editForm.name} onChange={(e) => setF("name", e.target.value)} />
+                  </Field>
+                </div>
+                <Field label="Category">
+                  <select style={S.select} value={editForm.category} onChange={(e) => setF("category", e.target.value)}>
+                    {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </Field>
+                <Field label="Location">
+                  <select style={S.select} value={editForm.location} onChange={(e) => setF("location", e.target.value)}>
+                    {LOCATIONS.map((l) => <option key={l}>{l}</option>)}
+                  </select>
+                </Field>
+                <Field label="Condition">
+                  <select style={S.select} value={editForm.condition} onChange={(e) => setF("condition", e.target.value)}>
+                    {CONDITIONS.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </Field>
+                <Field label="Serial number">
+                  <input style={S.input} value={editForm.serialNumber} onChange={(e) => setF("serialNumber", e.target.value)} placeholder="Optional" />
+                </Field>
+                <Field label="Purchase date">
+                  <input style={S.input} type="date" value={editForm.purchaseDate} onChange={(e) => setF("purchaseDate", e.target.value)} />
+                </Field>
+                <Field label="Purchase value ($)">
+                  <input style={S.input} type="number" min="0" step="1" value={editForm.purchaseValue} onChange={(e) => setF("purchaseValue", e.target.value)} placeholder="e.g. 329" />
+                </Field>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <Field label="Notes">
+                    <textarea style={{ ...S.input, height: "72px", resize: "vertical" }} value={editForm.notes} onChange={(e) => setF("notes", e.target.value)} placeholder="Anything the team should know" />
+                  </Field>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+                <button style={S.btnGhost} onClick={cancelEdit}>Cancel</button>
+                <button style={{ ...S.btn, opacity: saving ? 0.6 : 1 }} onClick={saveEdit} disabled={saving}>
+                  {saving ? "Saving…" : "Save changes"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            // ── Read view ──
+            <div style={{ display: "flex", flexDirection: isMobile ? "column-reverse" : "row", gap: "20px", marginTop: "16px" }}>
+              {/* Left: details + status + history */}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "12px", color: "#666", marginBottom: "12px", lineHeight: "1.8" }}>
+                  {asset.serialNumber && <div>Serial: <span style={{ color: "#aaa" }}>{asset.serialNumber}</span></div>}
+                  {asset.condition && <div>Condition: <span style={{ color: "#aaa" }}>{asset.condition}</span></div>}
+                  {asset.purchaseDate && <div>Purchased: <span style={{ color: "#aaa" }}>{asset.purchaseDate}</span></div>}
+                  {asset.purchaseValue && <div>Value: <span style={{ color: "#7eb8f7", fontWeight: "500" }}>{formatCurrency(asset.purchaseValue)}</span></div>}
+                  {asset.checkedOutTo?.name && (
+                    <div>Checked out to: <span style={{ color: "#ba7517" }}>{asset.checkedOutTo.name}{asset.checkedOutTo.email ? ` · ${asset.checkedOutTo.email}` : ""}</span></div>
+                  )}
+                  {asset.notes && <div style={{ marginTop: "4px" }}>Notes: <span style={{ color: "#aaa" }}>{asset.notes}</span></div>}
+                </div>
+                <div style={{ marginBottom: "12px" }}>
+                  <label style={S.label}>Change status</label>
+                  <select style={{ ...S.select, width: "180px" }} value={asset.status} onChange={(e) => onStatusChange(asset, e.target.value)}>
+                    {Object.entries(STATUS_COLORS).map(([k, v]) => (
+                      <option key={k} value={k}>{v.label}</option>
+                    ))}
+                  </select>
+                </div>
+                {/* Checkout history */}
+                <div>
+                  <div style={{ fontSize: "11px", color: "#555", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Checkout history</div>
+                  {loadingHistory ? (
+                    <div style={{ color: "#444", fontSize: "13px" }}>Loading…</div>
+                  ) : history.length === 0 ? (
+                    <div style={{ color: "#444", fontSize: "13px" }}>No history yet.</div>
+                  ) : (
+                    history.slice(0, 5).map((h) => (
+                      <div key={h.id} style={S.checkoutHistory}>
+                        <div>
+                          <div style={{ fontSize: "13px", fontWeight: "500" }}>{h.by?.name}</div>
+                          {h.by?.email && <div style={{ fontSize: "12px", color: "#666" }}>{h.by.email}</div>}
+                          {h.notes && <div style={{ fontSize: "12px", color: "#888", fontStyle: "italic" }}>{h.notes}</div>}
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <span style={{ ...S.badge(h.action === "returned" ? "available" : "checked_out"), fontSize: "10px" }}>
+                            {h.action === "returned" ? "Returned" : "Checked out"}
+                          </span>
+                          {h.timestamp && (
+                            <div style={{ fontSize: "11px", color: "#555", marginTop: "4px" }}>
+                              {new Date(h.timestamp.seconds * 1000).toLocaleDateString()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+              {/* Right: QR code */}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: isMobile ? "center" : "flex-end" }}>
+                {qrUrl ? (
+                  <>
+                    <img src={qrUrl} alt="QR code" style={{ width: isMobile ? "180px" : "120px", height: isMobile ? "180px" : "120px", borderRadius: "8px", marginBottom: "8px" }} />
+                    <div style={{ fontSize: "11px", color: "#555", textAlign: "center", marginBottom: "10px", fontFamily: "monospace", wordBreak: "break-all" }}>
+                      {BASE_URL}/inventory/asset/{asset.assetId}
+                    </div>
+                    <button style={{ ...S.btnGhost, fontSize: "12px", padding: "6px 12px" }} onClick={printLabel}>
+                      🖨 Print label
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ width: "120px", height: "120px", background: "#1e1e1e", borderRadius: "8px" }} />
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
-// ─── Checkout Flow (from list) ────────────────────────────────────────────────
+// ─── Checkout Log ─────────────────────────────────────────────────────────────
+function CheckoutLog({ assets }) {
+  const [log, setLog] = useState([]);
+  const [loadingLog, setLoadingLog] = useState(true);
+
+  useEffect(() => {
+    const fetchAll = async () => {
+      const all = [];
+      for (const asset of assets) {
+        const snap = await getDocs(query(collection(db, "inventory", asset.id, "history"), orderBy("timestamp", "desc")));
+        snap.docs.forEach((d) => all.push({ ...d.data(), assetName: asset.name, assetId: asset.assetId, location: asset.location }));
+      }
+      all.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+      setLog(all);
+      setLoadingLog(false);
+    };
+    fetchAll();
+  }, [assets]);
+
+  if (loadingLog) return <div style={{ color: "#444", padding: "20px" }}>Loading log…</div>;
+  if (log.length === 0) return <div style={{ color: "#444", padding: "20px" }}>No checkout history yet.</div>;
+
+  return (
+    <div style={{ background: "#161616", border: "1px solid #2a2a2a", borderRadius: "12px", overflow: "hidden" }}>
+      {log.map((entry, i) => (
+        <div key={i} style={{ padding: "14px 20px", borderBottom: i === log.length - 1 ? "none" : "1px solid #1e1e1e", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: "14px", fontWeight: "500" }}>{entry.assetName} <span style={{ color: "#555", fontFamily: "monospace", fontSize: "12px" }}>({entry.assetId})</span></div>
+            <div style={{ fontSize: "12px", color: "#666", marginTop: "2px" }}>
+              {entry.by?.name}{entry.by?.email && ` · ${entry.by.email}`}
+            </div>
+            {entry.location && <div style={{ fontSize: "11px", color: "#444", marginTop: "2px" }}>{entry.location}</div>}
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <span style={{ ...S.badge(entry.action === "returned" ? "available" : "checked_out"), fontSize: "10px" }}>
+              {entry.action === "returned" ? "Returned" : "Checked out"}
+            </span>
+            {entry.timestamp && (
+              <div style={{ fontSize: "11px", color: "#555", marginTop: "4px" }}>
+                {new Date(entry.timestamp.seconds * 1000).toLocaleString()}
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Field wrapper ────────────────────────────────────────────────────────────
+function Field({ label, children }) {
+  return (
+    <div style={{ marginBottom: "16px" }}>
+      <label style={S.label}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+// ─── Checkout Flow ────────────────────────────────────────────────────────────
 function CheckoutFlow({ asset, onBack, onDone }) {
   const isReturn = asset?.status === "checked_out";
   const [name, setName] = useState("");
@@ -490,7 +925,6 @@ function CheckoutFlow({ asset, onBack, onDone }) {
           lastReturnedAt: serverTimestamp(),
           lastReturnedBy: { name: name.trim(), email: email.trim() || null },
         });
-        // Log to checkout history sub-collection
         await addDoc(collection(db, "inventory", asset.id, "history"), {
           action: "returned",
           by: { name: name.trim(), email: email.trim() || null },
@@ -499,10 +933,7 @@ function CheckoutFlow({ asset, onBack, onDone }) {
         });
       } else {
         const checkoutData = { name: name.trim(), email: email.trim() || null, date: serverTimestamp() };
-        await updateDoc(assetRef, {
-          status: "checked_out",
-          checkedOutTo: checkoutData,
-        });
+        await updateDoc(assetRef, { status: "checked_out", checkedOutTo: checkoutData });
         await addDoc(collection(db, "inventory", asset.id, "history"), {
           action: "checked_out",
           by: checkoutData,
@@ -528,9 +959,7 @@ function CheckoutFlow({ asset, onBack, onDone }) {
             {isReturn ? "Returned!" : "Checked out!"}
           </div>
           <div style={{ color: "#666", fontSize: "14px", marginBottom: "24px" }}>
-            {isReturn
-              ? `${asset.name} is back in inventory.`
-              : `${asset.name} is checked out to ${name}.`}
+            {isReturn ? `${asset.name} is back in inventory.` : `${asset.name} is checked out to ${name}.`}
           </div>
           <button style={S.btn} onClick={onDone}>Back to inventory</button>
         </div>
@@ -571,380 +1000,6 @@ function CheckoutFlow({ asset, onBack, onDone }) {
   );
 }
 
-// ─── Public Checkout (via QR scan) ───────────────────────────────────────────
-function CheckoutPublic({ assetId, assets, loading }) {
-  const asset = assets.find((a) => a.assetId === assetId);
-
-  if (loading) return <div style={{ padding: "60px 24px", textAlign: "center", color: "#666" }}>Loading…</div>;
-  if (!asset) return (
-    <div style={{ padding: "60px 24px", textAlign: "center" }}>
-      <div style={{ fontSize: "18px", marginBottom: "8px" }}>Asset not found</div>
-      <div style={{ color: "#666", fontSize: "14px" }}>ID: {assetId}</div>
-    </div>
-  );
-
-  return (
-    <div style={{ padding: "24px", maxWidth: "440px", margin: "0 auto" }}>
-      <div style={{ ...S.card, marginBottom: "0" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
-          <div>
-            <div style={{ fontSize: "18px", fontWeight: "500", marginBottom: "4px" }}>{asset.name}</div>
-            <div style={{ fontSize: "12px", color: "#555", fontFamily: "monospace" }}>{asset.assetId}</div>
-          </div>
-          <span style={S.badge(asset.status)}>{STATUS_COLORS[asset.status]?.label}</span>
-        </div>
-        <div style={{ fontSize: "13px", color: "#666", marginBottom: "16px" }}>
-          {asset.category} · {asset.location}
-          {asset.condition && asset.condition !== "Good" && <span style={{ color: "#e24b4a" }}> · {asset.condition}</span>}
-        </div>
-        {asset.notes && (
-          <div style={{ background: "#1e1e1e", borderRadius: "8px", padding: "10px 12px", fontSize: "13px", color: "#888", marginBottom: "16px" }}>
-            {asset.notes}
-          </div>
-        )}
-      </div>
-      <CheckoutFlow asset={asset} onBack={() => window.location.href = "/"} onDone={() => window.location.href = "/"} />
-    </div>
-  );
-}
-
-// ─── Admin Dashboard ──────────────────────────────────────────────────────────
-function AdminDashboard({ assets, onAdd, onBack, onCheckout }) {
-  const [tab, setTab] = useState("assets");
-  const [selectedAsset, setSelectedAsset] = useState(null);
-  const [statusFilter, setStatusFilter] = useState("All");
-  const [search, setSearch] = useState("");
-  const [collapsedCategories, setCollapsedCategories] = useState({});
-
-  // Filter bug fix: reset selected asset when filter or search changes
-  const setStatusFilterSafe = (val) => { setStatusFilter(val); setSelectedAsset(null); };
-  const setSearchSafe = (val) => { setSearch(val); setSelectedAsset(null); };
-
-  const handleStatusChange = async (asset, newStatus) => {
-    await updateDoc(doc(db, "inventory", asset.id), { status: newStatus });
-  };
-
-  const counts = {
-    total: assets.length,
-    available: assets.filter((a) => a.status === "available").length,
-    checked_out: assets.filter((a) => a.status === "checked_out").length,
-    needs_repair: assets.filter((a) => a.status === "needs_repair").length,
-  };
-
-  // Apply status + search filters
-  const filtered = assets.filter((a) => {
-    const matchStatus = statusFilter === "All" || a.status === statusFilter;
-    const q = search.toLowerCase();
-    const matchSearch = !q || a.name?.toLowerCase().includes(q) || a.assetId?.toLowerCase().includes(q) || a.location?.toLowerCase().includes(q);
-    return matchStatus && matchSearch;
-  });
-
-  // Group by category
-  const grouped = filtered.reduce((acc, asset) => {
-    const cat = asset.category || "Other";
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(asset);
-    return acc;
-  }, {});
-  const categories = Object.keys(grouped).sort();
-
-  const toggleCategory = (cat) => setCollapsedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
-
-  return (
-    <div style={S.container}>
-      {/* Summary stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "12px", marginBottom: "24px" }}>
-        {[
-          { label: "Total Assets", value: counts.total, color: "#e8e4de" },
-          { label: "Available", value: counts.available, color: "#639922" },
-          { label: "Checked Out", value: counts.checked_out, color: "#ba7517" },
-          { label: "Needs Repair", value: counts.needs_repair, color: "#e24b4a" },
-        ].map((s) => (
-          <div key={s.label} style={{ background: "#161616", border: "1px solid #2a2a2a", borderRadius: "10px", padding: "14px 16px" }}>
-            <div style={{ fontSize: "11px", color: "#666", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>{s.label}</div>
-            <div style={{ fontSize: "24px", fontWeight: "600", color: s.color }}>{s.value}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-        <div style={{ display: "flex", gap: "6px" }}>
-          {["assets", "checkouts"].map((t) => (
-            <button key={t} style={S.tab(tab === t)} onClick={() => setTab(t)}>
-              {t === "assets" ? "All assets" : "Checkout log"}
-            </button>
-          ))}
-        </div>
-        <button style={S.btn} onClick={onAdd}>+ Add asset</button>
-      </div>
-
-      {tab === "assets" && (
-        <>
-          {/* Search + status filters */}
-          <div style={{ marginBottom: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
-            <input
-              style={{ ...S.input, fontSize: "14px" }}
-              placeholder="Search by name, ID, or location…"
-              value={search}
-              onChange={(e) => setSearchSafe(e.target.value)}
-            />
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-              {["All", "available", "checked_out", "needs_repair", "retired"].map((s) => (
-                <button
-                  key={s}
-                  style={{ ...S.tab(statusFilter === s), fontSize: "12px", padding: "6px 12px" }}
-                  onClick={() => setStatusFilterSafe(s)}
-                >
-                  {s === "All" ? `All (${assets.length})` : `${STATUS_COLORS[s]?.label} (${assets.filter(a => a.status === s).length})`}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Grouped by category */}
-          {filtered.length === 0 ? (
-            <div style={{ padding: "40px", textAlign: "center", color: "#444", background: "#161616", border: "1px solid #2a2a2a", borderRadius: "12px" }}>
-              {search ? `No assets matching "${search}"` : "No assets found."}
-            </div>
-          ) : (
-            categories.map((cat) => {
-              const catAssets = grouped[cat];
-              const isCollapsed = collapsedCategories[cat];
-              return (
-                <div key={cat} style={{ marginBottom: "12px" }}>
-                  {/* Category header */}
-                  <div
-                    onClick={() => toggleCategory(cat)}
-                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: isCollapsed ? "10px" : "10px 10px 0 0", cursor: "pointer", userSelect: "none" }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span style={{ fontSize: "13px", fontWeight: "600", color: "#e8e4de" }}>{cat}</span>
-                      <span style={{ fontSize: "11px", color: "#555", background: "#222", padding: "2px 8px", borderRadius: "10px" }}>{catAssets.length}</span>
-                    </div>
-                    <span style={{ color: "#444", fontSize: "11px" }}>{isCollapsed ? "▼" : "▲"}</span>
-                  </div>
-                  {/* Assets in category */}
-                  {!isCollapsed && (
-                    <div style={{ background: "#161616", border: "1px solid #2a2a2a", borderTop: "none", borderRadius: "0 0 10px 10px", overflow: "hidden" }}>
-                      {catAssets.map((asset, i) => (
-                        <AdminAssetRow
-                          key={asset.id}
-                          asset={asset}
-                          last={i === catAssets.length - 1}
-                          onStatusChange={handleStatusChange}
-                          onSelect={() => setSelectedAsset(selectedAsset?.id === asset.id ? null : asset)}
-                          expanded={selectedAsset?.id === asset.id}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </>
-      )}
-
-      {tab === "checkouts" && <CheckoutLog assets={assets} />}
-    </div>
-  );
-}
-
-// ─── Admin Asset Row ──────────────────────────────────────────────────────────
-function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
-  const [qrUrl, setQrUrl] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-
-  const loadDetails = async () => {
-    if (!expanded) {
-      if (!qrUrl) {
-        const url = await generateQRDataURL(asset.assetId);
-        setQrUrl(url);
-      }
-      setLoadingHistory(true);
-      const snap = await getDocs(query(collection(db, "inventory", asset.id, "history"), orderBy("timestamp", "desc")));
-      setHistory(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setLoadingHistory(false);
-    }
-    onSelect();
-  };
-
-  const printLabel = () => {
-    const win = window.open("", "_blank");
-    win.document.write(`
-      <html><body style="text-align:center;font-family:sans-serif;padding:20px;">
-        <img src="${qrUrl}" style="width:180px;height:180px;" /><br/>
-        <strong style="font-size:16px;">${asset.name}</strong><br/>
-        <span style="font-size:12px;color:#666;">${asset.assetId}</span>
-      </body></html>
-    `);
-    win.print();
-  };
-
-  return (
-    <div style={{ borderBottom: last ? "none" : "1px solid #222" }}>
-      <div
-        style={{ padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
-        onClick={loadDetails}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-          <span style={S.badge(asset.status)}>{STATUS_COLORS[asset.status]?.label}</span>
-          <div>
-            <div style={{ fontSize: "14px", fontWeight: "500" }}>{asset.name}</div>
-            <div style={{ fontSize: "12px", color: "#555" }}>{asset.assetId} · {asset.category} · {asset.location}</div>
-          </div>
-        </div>
-        <span style={{ color: "#444", fontSize: "12px" }}>{expanded ? "▲" : "▼"}</span>
-      </div>
-      {expanded && (
-        <div style={{ padding: "0 20px 20px", borderTop: "1px solid #1e1e1e" }}>
-          <div style={{
-            display: "flex",
-            flexDirection: window.innerWidth < 600 ? "column-reverse" : "row",
-            gap: "20px",
-            marginTop: "16px",
-          }}>
-            {/* Left: details + status control */}
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "12px", color: "#666", marginBottom: "12px", lineHeight: "1.8" }}>
-                {asset.serialNumber && <div>Serial: <span style={{ color: "#aaa" }}>{asset.serialNumber}</span></div>}
-                {asset.condition && <div>Condition: <span style={{ color: "#aaa" }}>{asset.condition}</span></div>}
-                {asset.notes && <div>Notes: <span style={{ color: "#aaa" }}>{asset.notes}</span></div>}
-                {asset.purchaseDate && <div>Purchased: <span style={{ color: "#aaa" }}>{asset.purchaseDate}</span></div>}
-              </div>
-              <div style={{ marginBottom: "12px" }}>
-                <label style={S.label}>Change status</label>
-                <select
-                  style={{ ...S.select, width: "180px" }}
-                  value={asset.status}
-                  onChange={(e) => onStatusChange(asset, e.target.value)}
-                >
-                  {Object.entries(STATUS_COLORS).map(([k, v]) => (
-                    <option key={k} value={k}>{v.label}</option>
-                  ))}
-                </select>
-              </div>
-              {/* Checkout history */}
-              <div>
-                <div style={{ fontSize: "11px", color: "#555", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Checkout history</div>
-                {loadingHistory ? (
-                  <div style={{ color: "#444", fontSize: "13px" }}>Loading…</div>
-                ) : history.length === 0 ? (
-                  <div style={{ color: "#444", fontSize: "13px" }}>No history yet.</div>
-                ) : (
-                  history.slice(0, 5).map((h) => (
-                    <div key={h.id} style={S.checkoutHistory}>
-                      <div>
-                        <div style={{ fontSize: "13px", fontWeight: "500" }}>{h.by?.name}</div>
-                        {h.by?.email && <div style={{ fontSize: "12px", color: "#666" }}>{h.by.email}</div>}
-                        {h.notes && <div style={{ fontSize: "12px", color: "#888", fontStyle: "italic" }}>{h.notes}</div>}
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <span style={{ ...S.badge(h.action === "returned" ? "available" : "checked_out"), fontSize: "10px" }}>
-                          {h.action === "returned" ? "Returned" : "Checked out"}
-                        </span>
-                        {h.timestamp && (
-                          <div style={{ fontSize: "11px", color: "#555", marginTop: "4px" }}>
-                            {new Date(h.timestamp.seconds * 1000).toLocaleDateString()}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-            {/* Right: QR code */}
-            <div style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: window.innerWidth < 600 ? "center" : "flex-end",
-            }}>
-              {qrUrl ? (
-                <>
-                  <img src={qrUrl} alt="QR code" style={{
-                    width: window.innerWidth < 600 ? "180px" : "120px",
-                    height: window.innerWidth < 600 ? "180px" : "120px",
-                    borderRadius: "8px",
-                    marginBottom: "8px",
-                  }} />
-                  <div style={{ fontSize: "11px", color: "#555", textAlign: "center", marginBottom: "10px", fontFamily: "monospace", wordBreak: "break-all" }}>
-                    {BASE_URL}/inventory/asset/{asset.assetId}
-                  </div>
-                  <button style={{ ...S.btnGhost, fontSize: "12px", padding: "6px 12px" }} onClick={printLabel}>
-                    🖨 Print label
-                  </button>
-                </>
-              ) : (
-                <div style={{ width: "120px", height: "120px", background: "#1e1e1e", borderRadius: "8px" }} />
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Checkout Log ─────────────────────────────────────────────────────────────
-function CheckoutLog({ assets }) {
-  const [log, setLog] = useState([]);
-  const [loadingLog, setLoadingLog] = useState(true);
-
-  useEffect(() => {
-    const fetchAll = async () => {
-      const all = [];
-      for (const asset of assets) {
-        const snap = await getDocs(query(collection(db, "inventory", asset.id, "history"), orderBy("timestamp", "desc")));
-        snap.docs.forEach((d) => all.push({ ...d.data(), assetName: asset.name, assetId: asset.assetId }));
-      }
-      all.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
-      setLog(all);
-      setLoadingLog(false);
-    };
-    fetchAll();
-  }, [assets]);
-
-  if (loadingLog) return <div style={{ color: "#444", padding: "20px" }}>Loading log…</div>;
-  if (log.length === 0) return <div style={{ color: "#444", padding: "20px" }}>No checkout history yet.</div>;
-
-  return (
-    <div style={{ background: "#161616", border: "1px solid #2a2a2a", borderRadius: "12px", overflow: "hidden" }}>
-      {log.map((entry, i) => (
-        <div key={i} style={{ padding: "14px 20px", borderBottom: i === log.length - 1 ? "none" : "1px solid #1e1e1e", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <div style={{ fontSize: "14px", fontWeight: "500" }}>{entry.assetName} <span style={{ color: "#555", fontFamily: "monospace", fontSize: "12px" }}>({entry.assetId})</span></div>
-            <div style={{ fontSize: "12px", color: "#666", marginTop: "2px" }}>
-              {entry.by?.name}{entry.by?.email && ` · ${entry.by.email}`}
-            </div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <span style={{ ...S.badge(entry.action === "returned" ? "available" : "checked_out"), fontSize: "10px" }}>
-              {entry.action === "returned" ? "Returned" : "Checked out"}
-            </span>
-            {entry.timestamp && (
-              <div style={{ fontSize: "11px", color: "#555", marginTop: "4px" }}>
-                {new Date(entry.timestamp.seconds * 1000).toLocaleString()}
-              </div>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Field wrapper ────────────────────────────────────────────────────────────
-function Field({ label, children }) {
-  return (
-    <div style={{ marginBottom: "16px" }}>
-      <label style={S.label}>{label}</label>
-      {children}
-    </div>
-  );
-}
-
 // ─── Add Asset ────────────────────────────────────────────────────────────────
 function AddAsset({ assets, onBack, onSaved }) {
   const [form, setForm] = useState({
@@ -955,6 +1010,7 @@ function AddAsset({ assets, onBack, onSaved }) {
     serialNumber: "",
     notes: "",
     purchaseDate: "",
+    purchaseValue: "",
     status: "available",
   });
   const [saving, setSaving] = useState(false);
@@ -973,7 +1029,9 @@ function AddAsset({ assets, onBack, onSaved }) {
         ...form,
         name: form.name.trim(),
         assetId,
+        purchaseValue: form.purchaseValue ? parseFloat(form.purchaseValue) : null,
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
       onSaved();
     } catch (e) {
@@ -993,7 +1051,7 @@ function AddAsset({ assets, onBack, onSaved }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
           <div style={{ gridColumn: "1 / -1" }}>
             <Field label="Asset name *">
-              <input style={S.input} value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. iPad Pro 12.9" />
+              <input style={S.input} value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. iPad 9th Gen" />
             </Field>
           </div>
           <Field label="Category">
@@ -1021,6 +1079,9 @@ function AddAsset({ assets, onBack, onSaved }) {
           </Field>
           <Field label="Purchase date">
             <input style={S.input} type="date" value={form.purchaseDate} onChange={(e) => set("purchaseDate", e.target.value)} />
+          </Field>
+          <Field label="Purchase value ($)">
+            <input style={S.input} type="number" min="0" step="1" value={form.purchaseValue} onChange={(e) => set("purchaseValue", e.target.value)} placeholder="e.g. 329" />
           </Field>
           <div style={{ gridColumn: "1 / -1" }}>
             <Field label="Notes">

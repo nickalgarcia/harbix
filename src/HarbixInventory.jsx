@@ -399,11 +399,12 @@ export default function HarbixInventory({ onBack }) {
 
 // ─── Header ──────────────────────────────────────────────────────────────────
 function Header({ view, onHome, onBack }) {
+  const handleBackToTickets = onBack || (() => { window.location.href = "/agent"; });
   return (
     <div style={S.header}>
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        {onBack && (
-          <button onClick={onBack} style={{ ...S.btnGhost, padding: "5px 10px", fontSize: "13px", marginRight: "4px" }}>
+        {view !== "checkout_public" && (
+          <button onClick={handleBackToTickets} style={{ ...S.btnGhost, padding: "5px 10px", fontSize: "13px", marginRight: "4px" }}>
             ← Tickets
           </button>
         )}

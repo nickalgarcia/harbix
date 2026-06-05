@@ -53,6 +53,6 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error("Serverless function error:", err.message);
-    return res.status(500).json({ error: "Internal server error", message: err.message });
+    return res.status(500).json({ error: "Internal server error" });
   }
 }

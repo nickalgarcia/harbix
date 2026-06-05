@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null &&
+             request.auth.token.email.matches('.*@godchasers\\.church');
+    }
+
+    // Tickets: staff only
+    match /tickets/{ticketId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Agent directory: staff only
+    match /agents/{agentId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Inventory assets: anyone can read (QR codes are public links)
+    // Only admins can create or delete assets
+    // Anyone can update status/checkedOutTo for anonymous checkout/return
+    match /inventory/{assetId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'checkedOutTo', 'updatedAt']);
+    }
+
+    // Checkout history: anyone can append a log entry, only staff can read
+    match /inventory/{assetId}/history/{historyId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+  }
+}

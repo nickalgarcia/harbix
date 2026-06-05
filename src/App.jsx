@@ -4,7 +4,7 @@ import {
 } from "firebase/auth";
 import {
   collection, addDoc, updateDoc, doc,
-  onSnapshot, query, orderBy, serverTimestamp
+  onSnapshot, query, orderBy, serverTimestamp, getDocs
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { auth, db, storage, googleProvider } from "./firebase";
@@ -54,13 +54,6 @@ const STEPS = [
   { key:"photo",    question:"Got a photo or screenshot?",           placeholder:"",                                         type:"photo",    required:false },
 ];
 
-// ── Team members ─────────────────────────────────────────────
-const TEAM = [
-  { id:"a1", name:"Nick Garcia",    email:"nick@godchasers.church",    avatar:"NG" },
-  { id:"a2", name:"Anthony",        email:"anthony@godchasers.church", avatar:"AN" },
-  { id:"a3", name:"Pastor Donte",   email:"pd@godchasers.church",      avatar:"PD" },
-  { id:"a4", name:"Ravon",          email:"ravon@godchasers.church",   avatar:"RV" },
-];
 
 const PRIORITY = {
   normal:   { label:"Normal",   bg:"#F3F4F6", text:"#6B7280",   dot:"#9CA3AF" },
@@ -457,7 +450,7 @@ function PriorityBadge({ priority }) {
 }
 
 // ── Ticket Detail ─────────────────────────────────────────────
-function TicketDetail({ ticket, agent, onUpdate, onBack }) {
+function TicketDetail({ ticket, agent, team, onUpdate, onBack }) {
   const [comment, setComment]         = useState("");
   const [commentType, setCommentType] = useState("internal");
   const [lightbox, setLightbox]       = useState(false);
@@ -614,11 +607,11 @@ function TicketDetail({ ticket, agent, onUpdate, onBack }) {
           <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:10 }}>Assign To</div>
           <div style={{ position:"relative", marginBottom:14 }}>
             <select value={ticket.assignedTo?.id||""} onChange={e=>{
-              const member = TEAM.find(m=>m.id===e.target.value)||null;
+              const member = team.find(m=>m.id===e.target.value)||null;
               handleAssign(member);
             }} style={{ width:"100%", padding:"11px 40px 11px 14px", borderRadius:10, border:`1.5px solid ${ticket.assignedTo?B.orange:B.border}`, fontSize:14, color:ticket.assignedTo?B.orange:B.text, background:ticket.assignedTo?B.orangeLight:B.white, fontFamily:"inherit", cursor:"pointer", appearance:"auto" }}>
               <option value="">Unassigned — tap to assign</option>
-              {TEAM.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+              {team.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
           {ticket.assignedTo && (
@@ -788,7 +781,7 @@ function NewTicketModal({ agent, onClose, onSubmit }) {
 }
 
 // ── Agent Dashboard ───────────────────────────────────────────
-function AgentDashboard({ agent, tickets, onUpdate, onAdd, onLogout, onInventory }) {
+function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInventory }) {
   const [tab, setTab]           = useState("all");
   const [view, setView]         = useState("card");
   const [selected, setSelected] = useState(null);
@@ -822,7 +815,7 @@ function AgentDashboard({ agent, tickets, onUpdate, onAdd, onLogout, onInventory
   if (selected) {
     const live = tickets.find(t=>t.id===selected);
     if (!live) { setSelected(null); return null; }
-    return <TicketDetail ticket={live} agent={agent} onUpdate={onUpdate} onBack={()=>setSelected(null)} />;
+    return <TicketDetail ticket={live} agent={agent} team={team} onUpdate={onUpdate} onBack={()=>setSelected(null)} />;
   }
 
   return (
@@ -898,6 +891,7 @@ export default function App() {
   const [user, setUser]       = useState(undefined); // undefined = loading
   const [agent, setAgent]     = useState(null);
   const [tickets, setTickets] = useState([]);
+  const [team, setTeam]       = useState([]);
   const [page, setPage]       = useState("public");
 
   // ── Auth listener — auto-redirect on refresh if already logged in
@@ -932,6 +926,14 @@ export default function App() {
       setTickets(snap.docs.map(d => ({ id:d.id, ...d.data() })));
     });
     return unsub;
+  }, [agent]);
+
+  // ── Fetch agent directory from Firestore (not bundled in client JS)
+  useEffect(() => {
+    if (!agent) { setTeam([]); return; }
+    getDocs(collection(db, "agents")).then(snap => {
+      setTeam(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
   }, [agent]);
 
   // ── Submit ticket (public form)
@@ -1029,6 +1031,7 @@ export default function App() {
       <AgentDashboard
         agent={agent}
         tickets={tickets}
+        team={team}
         onUpdate={handleUpdate}
         onAdd={handleAdd}
         onLogout={handleLogout}

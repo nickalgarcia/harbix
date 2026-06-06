@@ -141,7 +141,7 @@ function exportInsuranceReport(assets) {
     <div class="stat"><div class="stat-label">Total Active Assets</div><div class="stat-value">${activeAssets.length}</div></div>
     <div class="stat"><div class="stat-label">Total Declared Value</div><div class="stat-value" style="color:#1a6b2a;">${totalValue ? `$${totalValue.toLocaleString()}` : "Not recorded"}</div></div>
     <div class="stat"><div class="stat-label">Locations</div><div class="stat-value">${Object.keys(byLocation).length}</div></div>
-    <div class="stat"><div class="stat-label">Needs Repair</div><div class="stat-value" style="color:#a32d2d;">${assets.filter(a => a.status === "needs_repair").length}</div></div>
+    <div class="stat"><div class="stat-label">Needs Repair</div><div class="stat-value" style="color:#a32d2d;">${assets.filter(a => a.status === "needs_repair" || a.condition === "Needs Repair").length}</div></div>
   </div>
   <table>
     <thead><tr><th>Asset ID</th><th>Name</th><th>Category</th><th>Condition</th><th>Serial #</th><th>Purchase Date</th><th>Value</th></tr></thead>
@@ -471,17 +471,32 @@ function CheckoutPublic({ assetId, assets, loading }) {
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
 function AdminDashboard({ assets, onAdd, onBack, onCheckout }) {
   const [tab, setTab] = useState("assets");
-  const [selectedAsset, setSelectedAsset] = useState(null);
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
   const [statusFilter, setStatusFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [collapsedCategories, setCollapsedCategories] = useState({});
 
-  const setStatusFilterSafe = (val) => { setStatusFilter(val); setSelectedAsset(null); setCollapsedCategories({}); };
-  const setSearchSafe = (val) => { setSearch(val); setSelectedAsset(null); setCollapsedCategories({}); };
+  const setStatusFilterSafe = (val) => { setStatusFilter(val); setExpandedIds(new Set()); setCollapsedCategories({}); };
+  const setSearchSafe = (val) => { setSearch(val); setExpandedIds(new Set()); setCollapsedCategories({}); };
+
+  const toggleAsset = (id) => setExpandedIds((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
 
   const handleStatusChange = async (asset, newStatus) => {
     await updateDoc(doc(db, "inventory", asset.id), { status: newStatus });
   };
+
+  // Some assets are flagged via the "Condition" field (e.g. set to "Needs Repair")
+  // without their operational status being updated to match — treat either as a match
+  // so the "Needs Repair" filter and counts reflect what staff actually marked.
+  const matchesStatus = (asset, status) =>
+    status === "needs_repair"
+      ? asset.status === "needs_repair" || asset.condition === "Needs Repair"
+      : asset.status === status;
 
   const totalValue = assets
     .filter((a) => a.status !== "retired")
@@ -491,11 +506,11 @@ function AdminDashboard({ assets, onAdd, onBack, onCheckout }) {
     total: assets.length,
     available: assets.filter((a) => a.status === "available").length,
     checked_out: assets.filter((a) => a.status === "checked_out").length,
-    needs_repair: assets.filter((a) => a.status === "needs_repair").length,
+    needs_repair: assets.filter((a) => matchesStatus(a, "needs_repair")).length,
   };
 
   const filtered = assets.filter((a) => {
-    const matchStatus = statusFilter === "All" || a.status === statusFilter;
+    const matchStatus = statusFilter === "All" || matchesStatus(a, statusFilter);
     const q = search.toLowerCase();
     const matchSearch = !q || a.name?.toLowerCase().includes(q) || a.assetId?.toLowerCase().includes(q) || a.location?.toLowerCase().includes(q);
     return matchStatus && matchSearch;
@@ -565,7 +580,7 @@ function AdminDashboard({ assets, onAdd, onBack, onCheckout }) {
                   style={{ ...S.tab(statusFilter === s), fontSize: "12px", padding: "6px 12px" }}
                   onClick={() => setStatusFilterSafe(s)}
                 >
-                  {s === "All" ? `All (${assets.length})` : `${STATUS_COLORS[s]?.label} (${assets.filter(a => a.status === s).length})`}
+                  {s === "All" ? `All (${assets.length})` : `${STATUS_COLORS[s]?.label} (${assets.filter(a => matchesStatus(a, s)).length})`}
                 </button>
               ))}
             </div>
@@ -599,8 +614,8 @@ function AdminDashboard({ assets, onAdd, onBack, onCheckout }) {
                           asset={asset}
                           last={i === catAssets.length - 1}
                           onStatusChange={handleStatusChange}
-                          onSelect={() => setSelectedAsset(selectedAsset?.id === asset.id ? null : asset)}
-                          expanded={selectedAsset?.id === asset.id}
+                          onSelect={() => toggleAsset(asset.id)}
+                          expanded={expandedIds.has(asset.id)}
                         />
                       ))}
                     </div>

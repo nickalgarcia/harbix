@@ -102,7 +102,7 @@ export default async function handler(req, res) {
       total:        assets.length,
       available:    assets.filter(a => a.status === "available").length,
       checked_out:  assets.filter(a => a.status === "checked_out").length,
-      needs_repair: assets.filter(a => a.status === "needs_repair").length,
+      needs_repair: assets.filter(a => a.status === "needs_repair" || a.condition === "Needs Repair").length,
     };
 
     // Overdue checkouts: checked out for 7+ days

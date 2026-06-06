@@ -11,9 +11,16 @@ const NOTIFY_EMAIL = "tech@godchasers.church";
 const BASE_URL = typeof window !== "undefined" ? window.location.origin : "https://harbix.vercel.app";
 
 const LOCATIONS = [
+  "AV Room",
+  "Copy Room",
   "Green Room",
-  "Next Wave 1",
-  "Next Wave 2",
+  "gKids - General",
+  "gKids - gFour5",
+  "gKids - gKids Jr.",
+  "gKids - gSeen",
+  "gKids - gTots",
+  "gTeens - Next Wave 1",
+  "gTeens - Next Wave 2",
   "Parent Care Room",
   "Staff Lounge",
   "The Main Hall",
@@ -469,8 +476,8 @@ function AdminDashboard({ assets, onAdd, onBack, onCheckout }) {
   const [search, setSearch] = useState("");
   const [collapsedCategories, setCollapsedCategories] = useState({});
 
-  const setStatusFilterSafe = (val) => { setStatusFilter(val); setSelectedAsset(null); };
-  const setSearchSafe = (val) => { setSearch(val); setSelectedAsset(null); };
+  const setStatusFilterSafe = (val) => { setStatusFilter(val); setSelectedAsset(null); setCollapsedCategories({}); };
+  const setSearchSafe = (val) => { setSearch(val); setSelectedAsset(null); setCollapsedCategories({}); };
 
   const handleStatusChange = async (asset, newStatus) => {
     await updateDoc(doc(db, "inventory", asset.id), { status: newStatus });
@@ -658,14 +665,19 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
 
   const loadDetails = async () => {
     if (!expanded) {
-      if (!qrUrl) {
-        const url = await generateQRDataURL(asset.assetId);
-        setQrUrl(url);
+      try {
+        if (!qrUrl) {
+          const url = await generateQRDataURL(asset.assetId);
+          setQrUrl(url);
+        }
+        setLoadingHistory(true);
+        const snap = await getDocs(query(collection(db, "inventory", asset.id, "history"), orderBy("timestamp", "desc")));
+        setHistory(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.error("Failed to load asset details:", err);
+      } finally {
+        setLoadingHistory(false);
       }
-      setLoadingHistory(true);
-      const snap = await getDocs(query(collection(db, "inventory", asset.id, "history"), orderBy("timestamp", "desc")));
-      setHistory(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setLoadingHistory(false);
     }
     onSelect();
   };

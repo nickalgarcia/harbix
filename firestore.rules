@@ -9,7 +9,8 @@ service cloud.firestore {
 
     // Tickets: staff only
     match /tickets/{ticketId} {
-      allow read, write: if isAdmin();
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
     }
 
     // Agent directory: staff only

@@ -799,29 +799,31 @@ function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInv
   const [showNew, setShowNew]   = useState(false);
   const [search, setSearch]     = useState("");
 
+  const isOpen = t => t.status!=="done" && t.status!=="closed";
+
   const counts = {
-    all:      tickets.length,
+    all:      tickets.filter(isOpen).length,
     waiting:  tickets.filter(t=>t.status==="waiting").length,
-    mine:     tickets.filter(t=>t.claimedBy?.id===agent.id).length,
-    assigned: tickets.filter(t=>t.assignedTo?.id===agent.id).length,
-    critical: tickets.filter(t=>t.priority==="critical").length,
+    mine:     tickets.filter(t=>isOpen(t)&&t.claimedBy?.id===agent.id).length,
+    assigned: tickets.filter(t=>isOpen(t)&&t.assignedTo?.id===agent.id).length,
+    critical: tickets.filter(t=>isOpen(t)&&t.priority==="critical").length,
     done:     tickets.filter(t=>t.status==="done"||t.status==="closed").length,
   };
 
   const deptCounts = {
-    tech:       tickets.filter(t=>t.department==="tech").length,
-    av:         tickets.filter(t=>t.department==="av").length,
-    facilities: tickets.filter(t=>t.department==="facilities").length,
-    unsorted:   tickets.filter(t=>t.department==="unsorted").length,
+    tech:       tickets.filter(t=>isOpen(t)&&t.department==="tech").length,
+    av:         tickets.filter(t=>isOpen(t)&&t.department==="av").length,
+    facilities: tickets.filter(t=>isOpen(t)&&t.department==="facilities").length,
+    unsorted:   tickets.filter(t=>isOpen(t)&&t.department==="unsorted").length,
   };
 
   const filtered = tickets.filter(t => {
     const matchTab =
-      tab==="all"      ? true :
+      tab==="all"      ? isOpen(t) :
       tab==="waiting"  ? t.status==="waiting" :
-      tab==="mine"     ? t.claimedBy?.id===agent.id :
-      tab==="assigned" ? t.assignedTo?.id===agent.id :
-      tab==="critical" ? t.priority==="critical" :
+      tab==="mine"     ? isOpen(t)&&t.claimedBy?.id===agent.id :
+      tab==="assigned" ? isOpen(t)&&t.assignedTo?.id===agent.id :
+      tab==="critical" ? isOpen(t)&&t.priority==="critical" :
       tab==="done"     ? (t.status==="done"||t.status==="closed") : true;
     const matchDept = deptFilter==="all" ? true : t.department===deptFilter;
     const s = search.toLowerCase();
@@ -858,7 +860,7 @@ function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInv
       </div>
       <div style={{ background:B.navy, padding:"0 16px 16px" }}>
         <div className="hx-shell" style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
-          {[["All","all",counts.all,B.white],["Waiting","waiting",counts.waiting,B.amber],["Mine","mine",counts.mine,B.orange],["Done","done",counts.done,B.green]].map(([label,key,count,color])=>(
+          {[["Open","all",counts.all,B.white],["Waiting","waiting",counts.waiting,B.amber],["Mine","mine",counts.mine,B.orange],["Done","done",counts.done,B.green]].map(([label,key,count,color])=>(
             <button key={label} onClick={()=>setTab(key)} style={{ background:tab===key?"rgba(255,255,255,0.14)":"rgba(255,255,255,0.07)", border:tab===key?"1.5px solid rgba(255,255,255,0.25)":"1.5px solid transparent", borderRadius:12, padding:"12px 10px", textAlign:"center", cursor:"pointer", fontFamily:"inherit" }}>
               <div style={{ fontSize:22, fontWeight:800, color, lineHeight:1, letterSpacing:"-0.03em" }}>{count}</div>
               <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginTop:3, fontWeight:600 }}>{label}</div>
@@ -868,9 +870,9 @@ function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInv
       </div>
       <div style={{ background:B.white, borderBottom:`1px solid ${B.border}`, padding:"0 16px" }}>
       <div className="hx-shell" style={{ display:"flex", overflowX:"auto" }}>
-        {[["all","All"],["waiting","Waiting"],["mine","My Queue"],["assigned","Assigned to Me"],["critical","Critical"],["done","Done"]].map(([key,label])=>(
+        {[["all","Open"],["waiting","Waiting"],["mine","My Queue"],["assigned","Assigned to Me"],["critical","Critical"],["done","Done"]].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)} style={{ background:"none", border:"none", borderBottom:`2.5px solid ${tab===key?B.orange:"transparent"}`, padding:"13px 14px", fontSize:13, fontWeight:tab===key?700:500, color:tab===key?B.orange:B.textSub, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
-            {label}{key!=="all"&&` (${counts[key]||0})`}
+            {label} ({counts[key]||0})
           </button>
         ))}
       </div>

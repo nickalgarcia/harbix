@@ -161,6 +161,7 @@ function PublicForm({ onSubmit }) {
   const [anim, setAnim]       = useState(false);
   const [dir, setDir]         = useState("forward");
   const [done, setDone]       = useState(false);
+  const [tip, setTip]         = useState(null);
   const [kbVisible, setKbVisible] = useState(false);
   const inputRef = useRef();
   const photoRef = useRef();
@@ -195,7 +196,8 @@ function PublicForm({ onSubmit }) {
     if (step < STEPS.length - 1) { go(1); return; }
     setLoading(true);
     try {
-      await onSubmit(updated, photoFile);
+      const result = await onSubmit(updated, photoFile);
+      setTip(result?.selfHelpTip || null);
     } finally {
       setLoading(false);
       setDone(true);
@@ -221,9 +223,17 @@ function PublicForm({ onSubmit }) {
         Got it{answers.name?`, ${answers.name.split(" ")[0]}`:""}!
       </h2>
       <p style={{ color:"rgba(255,255,255,0.5)", fontSize:16, lineHeight:1.7, maxWidth:300, margin:"0 auto 36px" }}>
-        Someone from the AV team will follow up with you{answers.contact?` at ${answers.contact}`:""} as soon as possible.
+        Someone from our team will follow up with you{answers.contact?` at ${answers.contact}`:""} as soon as possible.
       </p>
-      <button onClick={()=>{ setDone(false); setStep(0); setAnswers({}); setPhotoFile(null); setPhotoPreview(null); setCurrent(""); }}
+      {tip && (
+        <div style={{ background:"rgba(239,100,35,0.12)", border:"1.5px solid rgba(239,100,35,0.35)", borderRadius:14, padding:"14px 16px", margin:"0 auto 36px", maxWidth:320, textAlign:"left" }}>
+          <div style={{ fontSize:11, fontWeight:700, color:B.orange, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:5 }}>
+            ✨ While you wait
+          </div>
+          <div style={{ fontSize:14, color:"rgba(255,255,255,0.85)", lineHeight:1.5 }}>{tip}</div>
+        </div>
+      )}
+      <button onClick={()=>{ setDone(false); setTip(null); setStep(0); setAnswers({}); setPhotoFile(null); setPhotoPreview(null); setCurrent(""); }}
         style={{ background:"rgba(255,255,255,0.1)", color:"rgba(255,255,255,0.7)", border:"1.5px solid rgba(255,255,255,0.15)", borderRadius:12, padding:"13px 28px", fontSize:15, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
         Submit another issue
       </button>
@@ -957,17 +967,36 @@ export default function App() {
       }
     }
 
+    // AI triage — fails soft to unsorted/normal, never blocks submission
+    let triage = { department:"unsorted", priority:"normal", firstStep:null, selfHelpTip:null, confidence:0 };
+    try {
+      const r = await fetch("/api/triage", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ issue: answers.issue, location: answers.location, name: answers.name }),
+      });
+      if (r.ok) triage = { ...triage, ...(await r.json()) };
+    } catch (e) {
+      console.warn("Triage unavailable — ticket saved as unsorted:", e);
+    }
+
     const ticketData = {
-      name:      answers.name     || "",
-      contact:   answers.contact  || "",
-      location:  answers.location || "",
-      issue:     answers.issue    || "",
+      name:       answers.name     || "",
+      contact:    answers.contact  || "",
+      location:   answers.location || "",
+      issue:      answers.issue    || "",
       photoURL,
-      status:    "waiting",
-      claimedBy: null,
-      comments:  [],
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+      status:     "waiting",
+      department: triage.department,
+      priority:   triage.priority,
+      ai: {
+        firstStep:  triage.firstStep,
+        confidence: triage.confidence,
+      },
+      claimedBy:  null,
+      comments:   [],
+      createdAt:  serverTimestamp(),
+      updatedAt:  serverTimestamp(),
     };
 
     // Save to Firestore
@@ -984,6 +1013,9 @@ export default function App() {
       console.error("PC sync failed:", e);
       // Non-fatal — ticket is already in Firestore
     }
+
+    // Return the tip so the form's confirmation screen can show it
+    return { selfHelpTip: triage.selfHelpTip };
   };
 
   // ── Update ticket (agent actions)
@@ -1004,8 +1036,9 @@ export default function App() {
       location:  form.location || "",
       issue:     form.issue    || "",
       photoURL,
-      status:    status || "waiting",
-      claimedBy: claimedBy || null,
+      status:     status || "waiting",
+      department: "unsorted",
+      claimedBy:  claimedBy || null,
       comments:  [],
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),

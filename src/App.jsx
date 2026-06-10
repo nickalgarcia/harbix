@@ -61,6 +61,13 @@ const PRIORITY = {
   critical: { label:"Critical", bg:B.redBg,   text:B.redText,   dot:B.red     },
 };
 
+const DEPARTMENT = {
+  tech:       { label:"Tech",       bg:"#CCFBF1", text:"#115E59", dot:"#14B8A6" },
+  av:         { label:"AV",         bg:"#EDE9FE", text:"#5B21B6", dot:"#8B5CF6" },
+  facilities: { label:"Facilities", bg:"#EFEBE4", text:"#5D4A37", dot:"#A18A6B" },
+  unsorted:   { label:"Unsorted",   bg:"#F3F4F6", text:"#6B7280", dot:"#9CA3AF" },
+};
+
 // ── Helpers ───────────────────────────────────────────────────
 function timeAgo(val) {
   if (!val) return "";
@@ -390,6 +397,7 @@ function TicketCard({ ticket, agent, onClaim, onUnclaim, onClick }) {
           <StatusBadge status={ticket.status} />
         </div>
         <div style={{ display:"flex", gap:5, marginBottom:10, flexWrap:"wrap" }}>
+          {ticket.department && <DeptBadge department={ticket.department} />}
           <Chip icon="📍">{ticket.location}</Chip>
           {ticket.priority && ticket.priority !== "normal" && <PriorityBadge priority={ticket.priority} />}
           {ticket.assignedTo && <Chip icon="👤">{ticket.assignedTo.name.split(" ")[0]}</Chip>}
@@ -431,6 +439,7 @@ function TicketRow({ ticket, agent, onClaim, onUnclaim, onClick }) {
       <div style={{ flex:1, minWidth:0, cursor:"pointer" }} onClick={onClick}>
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3, flexWrap:"wrap" }}>
           <span style={{ fontWeight:700, fontSize:14, color:B.text }}>{ticket.name}</span>
+          {ticket.department && <DeptBadge department={ticket.department} />}
           <Chip icon="📍">{ticket.location}</Chip>
         </div>
         <p style={{ margin:0, fontSize:12, color:B.textSub, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{ticket.issue}</p>
@@ -455,6 +464,18 @@ function PriorityBadge({ priority }) {
     <span style={{ display:"inline-flex", alignItems:"center", gap:5, padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:700, background:p.bg, color:p.text, whiteSpace:"nowrap" }}>
       <span style={{ width:6, height:6, borderRadius:"50%", background:p.dot, flexShrink:0 }} />
       {p.label}
+    </span>
+  );
+}
+
+// ── Department Badge ──────────────────────────────────────────
+function DeptBadge({ department }) {
+  const d = DEPARTMENT[department];
+  if (!d) return null;
+  return (
+    <span style={{ display:"inline-flex", alignItems:"center", gap:5, padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:700, background:d.bg, color:d.text, whiteSpace:"nowrap" }}>
+      <span style={{ width:6, height:6, borderRadius:"50%", background:d.dot, flexShrink:0 }} />
+      {d.label}
     </span>
   );
 }
@@ -573,6 +594,7 @@ function TicketDetail({ ticket, agent, team, onUpdate, onBack }) {
       <div style={{ padding:"16px", maxWidth:640, margin:"0 auto" }}>
         <div style={{ background:B.white, borderRadius:16, padding:"20px", marginBottom:14, border:`1px solid ${B.border}` }}>
           <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap" }}>
+            {ticket.department && <DeptBadge department={ticket.department} />}
             <Chip icon="📍">{ticket.location}</Chip>
             {ticket.contact && <Chip icon="📬">{ticket.contact}</Chip>}
             <Chip icon="🕐">{timeAgo(ticket.createdAt)}</Chip>
@@ -586,8 +608,29 @@ function TicketDetail({ ticket, agent, team, onUpdate, onBack }) {
           )}
         </div>
 
-        {/* Priority + Due Date */}
+        {/* AI suggested first step */}
+        {ticket.ai?.firstStep && (
+          <div style={{ background:B.orangeLight, border:"1.5px solid #FDDECE", borderRadius:16, padding:"16px 20px", marginBottom:14 }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:B.orange, textTransform:"uppercase", letterSpacing:"0.08em" }}>✨ Suggested First Step</div>
+              {typeof ticket.ai.confidence==="number" && ticket.ai.confidence>0 && (
+                <span style={{ fontSize:11, color:B.muted, fontWeight:600 }}>{Math.round(ticket.ai.confidence*100)}% match</span>
+              )}
+            </div>
+            <p style={{ margin:0, fontSize:14, color:B.text, lineHeight:1.6 }}>{ticket.ai.firstStep}</p>
+          </div>
+        )}
+
+        {/* Department + Priority + Due Date */}
         <div style={{ background:B.white, borderRadius:16, padding:"20px", marginBottom:14, border:`1px solid ${B.border}` }}>
+          <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:14 }}>Department</div>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:20 }}>
+            {Object.entries(DEPARTMENT).map(([key,val])=>(
+              <button key={key} onClick={()=>update({department:key},`Department set to ${val.label}`)} style={{ display:"flex", alignItems:"center", gap:6, padding:"7px 13px", borderRadius:8, border:`1.5px solid ${(ticket.department||"unsorted")===key?B.orange:B.border}`, background:(ticket.department||"unsorted")===key?B.orangeLight:B.white, cursor:"pointer", fontFamily:"inherit", fontSize:13, fontWeight:(ticket.department||"unsorted")===key?700:400, color:(ticket.department||"unsorted")===key?B.orange:B.text }}>
+                <span style={{ width:7, height:7, borderRadius:"50%", background:val.dot }} />{val.label}
+              </button>
+            ))}
+          </div>
           <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:14 }}>Priority & Due Date</div>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:16 }}>
             {Object.entries(PRIORITY).map(([key,val])=>(
@@ -800,6 +843,7 @@ function NewTicketModal({ agent, onClose, onSubmit }) {
 // ── Agent Dashboard ───────────────────────────────────────────
 function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInventory }) {
   const [tab, setTab]           = useState("all");
+  const [deptFilter, setDeptFilter] = useState("all");
   const [view, setView]         = useState("card");
   const [selected, setSelected] = useState(null);
   const [showNew, setShowNew]   = useState(false);
@@ -814,6 +858,13 @@ function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInv
     done:     tickets.filter(t=>t.status==="done"||t.status==="closed").length,
   };
 
+  const deptCounts = {
+    tech:       tickets.filter(t=>t.department==="tech").length,
+    av:         tickets.filter(t=>t.department==="av").length,
+    facilities: tickets.filter(t=>t.department==="facilities").length,
+    unsorted:   tickets.filter(t=>t.department==="unsorted").length,
+  };
+
   const filtered = tickets.filter(t => {
     const matchTab =
       tab==="all"      ? true :
@@ -822,8 +873,9 @@ function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInv
       tab==="assigned" ? t.assignedTo?.id===agent.id :
       tab==="critical" ? t.priority==="critical" :
       tab==="done"     ? (t.status==="done"||t.status==="closed") : true;
+    const matchDept = deptFilter==="all" ? true : t.department===deptFilter;
     const s = search.toLowerCase();
-    return matchTab && (!search || t.name.toLowerCase().includes(s) || t.issue.toLowerCase().includes(s) || t.location.toLowerCase().includes(s));
+    return matchTab && matchDept && (!search || t.name.toLowerCase().includes(s) || t.issue.toLowerCase().includes(s) || t.location.toLowerCase().includes(s));
   });
 
   const claim   = id => onUpdate(id,{claimedBy:agent,status:"on-it"});
@@ -866,6 +918,17 @@ function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInv
         {[["all","All"],["waiting","Waiting"],["mine","My Queue"],["assigned","Assigned to Me"],["critical","Critical"],["done","Done"]].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)} style={{ background:"none", border:"none", borderBottom:`2.5px solid ${tab===key?B.orange:"transparent"}`, padding:"13px 14px", fontSize:13, fontWeight:tab===key?700:500, color:tab===key?B.orange:B.textSub, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
             {label}{key!=="all"&&` (${counts[key]||0})`}
+          </button>
+        ))}
+      </div>
+      <div style={{ padding:"12px 16px 0", display:"flex", gap:6, flexWrap:"wrap" }}>
+        <button onClick={()=>setDeptFilter("all")} style={{ padding:"6px 13px", borderRadius:20, border:`1.5px solid ${deptFilter==="all"?B.navy:B.border}`, background:deptFilter==="all"?B.navy:B.white, color:deptFilter==="all"?B.white:B.textSub, fontSize:12, fontWeight:deptFilter==="all"?700:500, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
+          All Depts
+        </button>
+        {Object.entries(DEPARTMENT).map(([key,d])=>(
+          <button key={key} onClick={()=>setDeptFilter(deptFilter===key?"all":key)} style={{ display:"inline-flex", alignItems:"center", gap:5, padding:"6px 13px", borderRadius:20, border:`1.5px solid ${deptFilter===key?d.dot:B.border}`, background:deptFilter===key?d.bg:B.white, color:deptFilter===key?d.text:B.textSub, fontSize:12, fontWeight:deptFilter===key?700:500, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
+            <span style={{ width:6, height:6, borderRadius:"50%", background:d.dot, flexShrink:0 }} />
+            {d.label}{deptCounts[key]>0&&` (${deptCounts[key]})`}
           </button>
         ))}
       </div>

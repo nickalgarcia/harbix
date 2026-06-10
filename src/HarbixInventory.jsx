@@ -5,6 +5,7 @@ import {
 } from "firebase/firestore";
 import QRCode from "qrcode";
 import { db } from "./firebase";
+import { B, HarbixLogo } from "./theme";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const NOTIFY_EMAIL = "tech@godchasers.church";
@@ -188,7 +189,7 @@ async function sendCheckoutEmail(asset, checkoutData) {
 // ─── QR Generator ────────────────────────────────────────────────────────────
 async function generateQRDataURL(assetId) {
   const url = `${BASE_URL}/inventory/asset/${assetId}`;
-  return QRCode.toDataURL(url, { width: 256, margin: 2, color: { dark: "#1a1a1a", light: "#ffffff" } });
+  return QRCode.toDataURL(url, { width: 256, margin: 2, color: { dark: "#F2F0EC", light: "#ffffff" } });
 }
 
 // ─── Generate asset ID ────────────────────────────────────────────────────────
@@ -203,66 +204,40 @@ function generateAssetId(category, existingIds) {
 const S = {
   page: {
     minHeight: "100vh",
-    background: "#0f0f0f",
-    color: "#e8e4de",
+    background: "#F8F7F5",
+    color: "#1C1B22",
     fontFamily: "'DM Sans', 'Helvetica Neue', sans-serif",
     padding: "0",
   },
   header: {
-    background: "#161616",
-    borderBottom: "1px solid #2a2a2a",
-    padding: "0 24px",
+    background: "#4E4D5F",
+    padding: "0 16px",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    height: "56px",
+    height: "54px",
     position: "sticky",
     top: 0,
     zIndex: 100,
   },
-  logoMark: {
-    width: "28px",
-    height: "28px",
-    background: "linear-gradient(135deg, #e8623a 0%, #c94d28 100%)",
-    borderRadius: "7px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "14px",
-    fontWeight: "700",
-    color: "#fff",
-    letterSpacing: "-0.5px",
-  },
-  logoText: {
-    fontSize: "15px",
-    fontWeight: "600",
-    color: "#e8e4de",
-    letterSpacing: "-0.3px",
-  },
-  logoSub: {
-    fontSize: "12px",
-    color: "#888",
-    marginLeft: "6px",
-    fontWeight: "400",
-  },
   container: {
-    maxWidth: "960px",
+    maxWidth: "1100px",
     margin: "0 auto",
     padding: "32px 24px",
   },
   card: {
-    background: "#161616",
-    border: "1px solid #2a2a2a",
+    background: "#FFFFFF",
+    border: "1px solid #E8E4DE",
     borderRadius: "12px",
     padding: "24px",
     marginBottom: "16px",
   },
   input: {
     width: "100%",
-    background: "#1e1e1e",
-    border: "1px solid #2a2a2a",
+    background: "#FFFFFF",
+    border: "1px solid #E8E4DE",
     borderRadius: "8px",
-    color: "#e8e4de",
+    color: "#1C1B22",
     padding: "10px 14px",
     fontSize: "16px",
     outline: "none",
@@ -271,10 +246,10 @@ const S = {
   },
   select: {
     width: "100%",
-    background: "#1e1e1e",
-    border: "1px solid #2a2a2a",
+    background: "#FFFFFF",
+    border: "1px solid #E8E4DE",
     borderRadius: "8px",
-    color: "#e8e4de",
+    color: "#1C1B22",
     padding: "10px 14px",
     fontSize: "16px",
     outline: "none",
@@ -285,14 +260,14 @@ const S = {
   label: {
     fontSize: "12px",
     fontWeight: "500",
-    color: "#888",
+    color: "#6E6A72",
     textTransform: "uppercase",
     letterSpacing: "0.05em",
     marginBottom: "6px",
     display: "block",
   },
   btn: {
-    background: "#e8623a",
+    background: "#EF6423",
     color: "#fff",
     border: "none",
     borderRadius: "8px",
@@ -303,9 +278,9 @@ const S = {
     transition: "background 0.15s",
   },
   btnGhost: {
-    background: "transparent",
-    color: "#888",
-    border: "1px solid #2a2a2a",
+    background: "#FFFFFF",
+    color: "#6E6A72",
+    border: "1px solid #E8E4DE",
     borderRadius: "8px",
     padding: "10px 20px",
     fontSize: "14px",
@@ -316,7 +291,7 @@ const S = {
   btnDanger: {
     background: "transparent",
     color: "#e24b4a",
-    border: "1px solid #3a2020",
+    border: "1px solid #F7C1C1",
     borderRadius: "8px",
     padding: "8px 16px",
     fontSize: "13px",
@@ -337,19 +312,19 @@ const S = {
     padding: "8px 16px",
     borderRadius: "8px",
     fontSize: "13px",
-    fontWeight: "500",
+    fontWeight: active ? "700" : "500",
     cursor: "pointer",
-    background: active ? "#2a2a2a" : "transparent",
-    color: active ? "#e8e4de" : "#666",
-    border: "none",
+    background: active ? "#FFF4EF" : "transparent",
+    color: active ? "#EF6423" : "#8A8590",
+    border: active ? "1.5px solid #FDDECE" : "1.5px solid transparent",
     transition: "all 0.15s",
   }),
   divider: {
-    borderTop: "1px solid #2a2a2a",
+    borderTop: "1px solid #E8E4DE",
     margin: "16px 0",
   },
   checkoutHistory: {
-    background: "#1a1a1a",
+    background: "#F2F0EC",
     borderRadius: "8px",
     padding: "12px 16px",
     marginBottom: "8px",
@@ -409,15 +384,14 @@ function Header({ view, onHome, onBack }) {
   const handleBackToTickets = onBack || (() => { window.location.href = "/agent"; });
   return (
     <div style={S.header}>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
         {view !== "checkout_public" && (
-          <button onClick={handleBackToTickets} style={{ ...S.btnGhost, padding: "5px 10px", fontSize: "13px", marginRight: "4px" }}>
+          <button onClick={handleBackToTickets} style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.7)", border: "1.5px solid rgba(255,255,255,0.15)", borderRadius: "8px", padding: "6px 12px", fontSize: "13px", fontWeight: "600", cursor: "pointer" }}>
             ← Tickets
           </button>
         )}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }} onClick={onHome}>
-          <div style={S.logoMark}>H</div>
-          <span style={S.logoText}>harbix <span style={S.logoSub}>inventory</span></span>
+        <div style={{ cursor: "pointer" }} onClick={onHome}>
+          <HarbixLogo dark size="sm" sub="Inventory" />
         </div>
       </div>
     </div>
@@ -427,7 +401,7 @@ function Header({ view, onHome, onBack }) {
 // ─── Loading ──────────────────────────────────────────────────────────────────
 function LoadingScreen() {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", color: "#444" }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh", color: "#A09A94" }}>
       Loading inventory…
     </div>
   );
@@ -436,11 +410,11 @@ function LoadingScreen() {
 // ─── Public Checkout (via QR scan) ───────────────────────────────────────────
 function CheckoutPublic({ assetId, assets, loading }) {
   const asset = assets.find((a) => a.assetId === assetId);
-  if (loading) return <div style={{ padding: "60px 24px", textAlign: "center", color: "#666" }}>Loading…</div>;
+  if (loading) return <div style={{ padding: "60px 24px", textAlign: "center", color: "#8A8590" }}>Loading…</div>;
   if (!asset) return (
     <div style={{ padding: "60px 24px", textAlign: "center" }}>
       <div style={{ fontSize: "18px", marginBottom: "8px" }}>Asset not found</div>
-      <div style={{ color: "#666", fontSize: "14px" }}>ID: {assetId}</div>
+      <div style={{ color: "#8A8590", fontSize: "14px" }}>ID: {assetId}</div>
     </div>
   );
   return (
@@ -449,16 +423,16 @@ function CheckoutPublic({ assetId, assets, loading }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
           <div>
             <div style={{ fontSize: "18px", fontWeight: "500", marginBottom: "4px" }}>{asset.name}</div>
-            <div style={{ fontSize: "12px", color: "#555", fontFamily: "monospace" }}>{asset.assetId}</div>
+            <div style={{ fontSize: "12px", color: "#6E6A72", fontFamily: "monospace" }}>{asset.assetId}</div>
           </div>
           <span style={S.badge(asset.status)}>{STATUS_COLORS[asset.status]?.label}</span>
         </div>
-        <div style={{ fontSize: "13px", color: "#666", marginBottom: "16px" }}>
+        <div style={{ fontSize: "13px", color: "#8A8590", marginBottom: "16px" }}>
           {asset.category} · {asset.location}
           {asset.condition && asset.condition !== "Good" && <span style={{ color: "#e24b4a" }}> · {asset.condition}</span>}
         </div>
         {asset.notes && (
-          <div style={{ background: "#1e1e1e", borderRadius: "8px", padding: "10px 12px", fontSize: "13px", color: "#888", marginBottom: "16px" }}>
+          <div style={{ background: "#F2F0EC", borderRadius: "8px", padding: "10px 12px", fontSize: "13px", color: "#6E6A72", marginBottom: "16px" }}>
             {asset.notes}
           </div>
         )}
@@ -531,14 +505,14 @@ function AdminDashboard({ assets, onAdd, onBack, onCheckout }) {
       {/* Summary stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "12px", marginBottom: "24px" }}>
         {[
-          { label: "Total Assets", value: counts.total, color: "#e8e4de" },
+          { label: "Total Assets", value: counts.total, color: "#1C1B22" },
           { label: "Available", value: counts.available, color: "#639922" },
           { label: "Checked Out", value: counts.checked_out, color: "#ba7517" },
           { label: "Needs Repair", value: counts.needs_repair, color: "#e24b4a" },
-          { label: "Declared Value", value: totalValue ? `$${totalValue.toLocaleString()}` : "—", color: "#7eb8f7", small: true },
+          { label: "Declared Value", value: totalValue ? `$${totalValue.toLocaleString()}` : "—", color: "#3B82F6", small: true },
         ].map((s) => (
-          <div key={s.label} style={{ background: "#161616", border: "1px solid #2a2a2a", borderRadius: "10px", padding: "14px 16px" }}>
-            <div style={{ fontSize: "11px", color: "#666", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>{s.label}</div>
+          <div key={s.label} style={{ background: "#FFFFFF", border: "1px solid #E8E4DE", borderRadius: "10px", padding: "14px 16px" }}>
+            <div style={{ fontSize: "11px", color: "#8A8590", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>{s.label}</div>
             <div style={{ fontSize: s.small ? "18px" : "24px", fontWeight: "600", color: s.color }}>{s.value}</div>
           </div>
         ))}
@@ -587,7 +561,7 @@ function AdminDashboard({ assets, onAdd, onBack, onCheckout }) {
           </div>
 
           {filtered.length === 0 ? (
-            <div style={{ padding: "40px", textAlign: "center", color: "#444", background: "#161616", border: "1px solid #2a2a2a", borderRadius: "12px" }}>
+            <div style={{ padding: "40px", textAlign: "center", color: "#A09A94", background: "#FFFFFF", border: "1px solid #E8E4DE", borderRadius: "12px" }}>
               {search ? `No assets matching "${search}"` : "No assets found."}
             </div>
           ) : (
@@ -598,16 +572,16 @@ function AdminDashboard({ assets, onAdd, onBack, onCheckout }) {
                 <div key={cat} style={{ marginBottom: "12px" }}>
                   <div
                     onClick={() => toggleCategory(cat)}
-                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", background: "#1a1a1a", border: "1px solid #2a2a2a", borderRadius: isCollapsed ? "10px" : "10px 10px 0 0", cursor: "pointer", userSelect: "none" }}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", background: "#F2F0EC", border: "1px solid #E8E4DE", borderRadius: isCollapsed ? "10px" : "10px 10px 0 0", cursor: "pointer", userSelect: "none" }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span style={{ fontSize: "13px", fontWeight: "600", color: "#e8e4de" }}>{cat}</span>
-                      <span style={{ fontSize: "11px", color: "#555", background: "#222", padding: "2px 8px", borderRadius: "10px" }}>{catAssets.length}</span>
+                      <span style={{ fontSize: "13px", fontWeight: "600", color: "#1C1B22" }}>{cat}</span>
+                      <span style={{ fontSize: "11px", color: "#6E6A72", background: "#F2F0EC", padding: "2px 8px", borderRadius: "10px" }}>{catAssets.length}</span>
                     </div>
-                    <span style={{ color: "#444", fontSize: "11px" }}>{isCollapsed ? "▼" : "▲"}</span>
+                    <span style={{ color: "#A09A94", fontSize: "11px" }}>{isCollapsed ? "▼" : "▲"}</span>
                   </div>
                   {!isCollapsed && (
-                    <div style={{ background: "#161616", border: "1px solid #2a2a2a", borderTop: "none", borderRadius: "0 0 10px 10px", overflow: "hidden" }}>
+                    <div style={{ background: "#FFFFFF", border: "1px solid #E8E4DE", borderTop: "none", borderRadius: "0 0 10px 10px", overflow: "hidden" }}>
                       {catAssets.map((asset, i) => (
                         <AdminAssetRow
                           key={asset.id}
@@ -703,7 +677,7 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
       <html><body style="text-align:center;font-family:sans-serif;padding:20px;">
         <img src="${qrUrl}" style="width:180px;height:180px;" /><br/>
         <strong style="font-size:16px;">${asset.name}</strong><br/>
-        <span style="font-size:12px;color:#666;">${asset.assetId} · ${asset.location}</span>
+        <span style="font-size:12px;color:#8A8590;">${asset.assetId} · ${asset.location}</span>
       </body></html>
     `);
     win.print();
@@ -715,6 +689,7 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
     <div style={{ borderBottom: last ? "none" : "1px solid #222" }}>
       {/* Collapsed row */}
       <div
+        className="hx-row"
         style={{ padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
         onClick={loadDetails}
       >
@@ -730,7 +705,7 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
                 </span>
               )}
             </div>
-            <div style={{ fontSize: "12px", color: "#555" }}>{asset.assetId} · {asset.location}</div>
+            <div style={{ fontSize: "12px", color: "#6E6A72" }}>{asset.assetId} · {asset.location}</div>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
@@ -739,13 +714,13 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
               ✏️ Edit
             </button>
           )}
-          <span style={{ color: "#444", fontSize: "12px" }}>{expanded ? "▲" : "▼"}</span>
+          <span style={{ color: "#A09A94", fontSize: "12px" }}>{expanded ? "▲" : "▼"}</span>
         </div>
       </div>
 
       {/* Expanded content */}
       {expanded && (
-        <div style={{ padding: "0 20px 20px", borderTop: "1px solid #1e1e1e" }}>
+        <div style={{ padding: "0 20px 20px", borderTop: "1px solid #FFFFFF" }}>
           {editing ? (
             // ── Edit form ──
             <div style={{ marginTop: "16px" }} onClick={(e) => e.stopPropagation()}>
@@ -797,15 +772,15 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
             <div style={{ display: "flex", flexDirection: isMobile ? "column-reverse" : "row", gap: "20px", marginTop: "16px" }}>
               {/* Left: details + status + history */}
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: "12px", color: "#666", marginBottom: "12px", lineHeight: "1.8" }}>
-                  {asset.serialNumber && <div>Serial: <span style={{ color: "#aaa" }}>{asset.serialNumber}</span></div>}
-                  {asset.condition && <div>Condition: <span style={{ color: "#aaa" }}>{asset.condition}</span></div>}
-                  {asset.purchaseDate && <div>Purchased: <span style={{ color: "#aaa" }}>{asset.purchaseDate}</span></div>}
-                  {asset.purchaseValue && <div>Value: <span style={{ color: "#7eb8f7", fontWeight: "500" }}>{formatCurrency(asset.purchaseValue)}</span></div>}
+                <div style={{ fontSize: "12px", color: "#8A8590", marginBottom: "12px", lineHeight: "1.8" }}>
+                  {asset.serialNumber && <div>Serial: <span style={{ color: "#6E6A72" }}>{asset.serialNumber}</span></div>}
+                  {asset.condition && <div>Condition: <span style={{ color: "#6E6A72" }}>{asset.condition}</span></div>}
+                  {asset.purchaseDate && <div>Purchased: <span style={{ color: "#6E6A72" }}>{asset.purchaseDate}</span></div>}
+                  {asset.purchaseValue && <div>Value: <span style={{ color: "#3B82F6", fontWeight: "500" }}>{formatCurrency(asset.purchaseValue)}</span></div>}
                   {asset.checkedOutTo?.name && (
                     <div>Checked out to: <span style={{ color: "#ba7517" }}>{asset.checkedOutTo.name}{asset.checkedOutTo.email ? ` · ${asset.checkedOutTo.email}` : ""}</span></div>
                   )}
-                  {asset.notes && <div style={{ marginTop: "4px" }}>Notes: <span style={{ color: "#aaa" }}>{asset.notes}</span></div>}
+                  {asset.notes && <div style={{ marginTop: "4px" }}>Notes: <span style={{ color: "#6E6A72" }}>{asset.notes}</span></div>}
                 </div>
                 <div style={{ marginBottom: "12px" }}>
                   <label style={S.label}>Change status</label>
@@ -817,25 +792,25 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
                 </div>
                 {/* Checkout history */}
                 <div>
-                  <div style={{ fontSize: "11px", color: "#555", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Checkout history</div>
+                  <div style={{ fontSize: "11px", color: "#6E6A72", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Checkout history</div>
                   {loadingHistory ? (
-                    <div style={{ color: "#444", fontSize: "13px" }}>Loading…</div>
+                    <div style={{ color: "#A09A94", fontSize: "13px" }}>Loading…</div>
                   ) : history.length === 0 ? (
-                    <div style={{ color: "#444", fontSize: "13px" }}>No history yet.</div>
+                    <div style={{ color: "#A09A94", fontSize: "13px" }}>No history yet.</div>
                   ) : (
                     history.slice(0, 5).map((h) => (
                       <div key={h.id} style={S.checkoutHistory}>
                         <div>
                           <div style={{ fontSize: "13px", fontWeight: "500" }}>{h.by?.name}</div>
-                          {h.by?.email && <div style={{ fontSize: "12px", color: "#666" }}>{h.by.email}</div>}
-                          {h.notes && <div style={{ fontSize: "12px", color: "#888", fontStyle: "italic" }}>{h.notes}</div>}
+                          {h.by?.email && <div style={{ fontSize: "12px", color: "#8A8590" }}>{h.by.email}</div>}
+                          {h.notes && <div style={{ fontSize: "12px", color: "#6E6A72", fontStyle: "italic" }}>{h.notes}</div>}
                         </div>
                         <div style={{ textAlign: "right" }}>
                           <span style={{ ...S.badge(h.action === "returned" ? "available" : "checked_out"), fontSize: "10px" }}>
                             {h.action === "returned" ? "Returned" : "Checked out"}
                           </span>
                           {h.timestamp && (
-                            <div style={{ fontSize: "11px", color: "#555", marginTop: "4px" }}>
+                            <div style={{ fontSize: "11px", color: "#6E6A72", marginTop: "4px" }}>
                               {new Date(h.timestamp.seconds * 1000).toLocaleDateString()}
                             </div>
                           )}
@@ -850,7 +825,7 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
                 {qrUrl ? (
                   <>
                     <img src={qrUrl} alt="QR code" style={{ width: isMobile ? "180px" : "120px", height: isMobile ? "180px" : "120px", borderRadius: "8px", marginBottom: "8px" }} />
-                    <div style={{ fontSize: "11px", color: "#555", textAlign: "center", marginBottom: "10px", fontFamily: "monospace", wordBreak: "break-all" }}>
+                    <div style={{ fontSize: "11px", color: "#6E6A72", textAlign: "center", marginBottom: "10px", fontFamily: "monospace", wordBreak: "break-all" }}>
                       {BASE_URL}/inventory/asset/{asset.assetId}
                     </div>
                     <button style={{ ...S.btnGhost, fontSize: "12px", padding: "6px 12px" }} onClick={printLabel}>
@@ -858,7 +833,7 @@ function AdminAssetRow({ asset, last, onStatusChange, onSelect, expanded }) {
                     </button>
                   </>
                 ) : (
-                  <div style={{ width: "120px", height: "120px", background: "#1e1e1e", borderRadius: "8px" }} />
+                  <div style={{ width: "120px", height: "120px", background: "#F2F0EC", borderRadius: "8px" }} />
                 )}
               </div>
             </div>
@@ -888,26 +863,26 @@ function CheckoutLog({ assets }) {
     fetchAll();
   }, [assets]);
 
-  if (loadingLog) return <div style={{ color: "#444", padding: "20px" }}>Loading log…</div>;
-  if (log.length === 0) return <div style={{ color: "#444", padding: "20px" }}>No checkout history yet.</div>;
+  if (loadingLog) return <div style={{ color: "#A09A94", padding: "20px" }}>Loading log…</div>;
+  if (log.length === 0) return <div style={{ color: "#A09A94", padding: "20px" }}>No checkout history yet.</div>;
 
   return (
-    <div style={{ background: "#161616", border: "1px solid #2a2a2a", borderRadius: "12px", overflow: "hidden" }}>
+    <div style={{ background: "#FFFFFF", border: "1px solid #E8E4DE", borderRadius: "12px", overflow: "hidden" }}>
       {log.map((entry, i) => (
-        <div key={i} style={{ padding: "14px 20px", borderBottom: i === log.length - 1 ? "none" : "1px solid #1e1e1e", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div key={i} style={{ padding: "14px 20px", borderBottom: i === log.length - 1 ? "none" : "1px solid #FFFFFF", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: "14px", fontWeight: "500" }}>{entry.assetName} <span style={{ color: "#555", fontFamily: "monospace", fontSize: "12px" }}>({entry.assetId})</span></div>
-            <div style={{ fontSize: "12px", color: "#666", marginTop: "2px" }}>
+            <div style={{ fontSize: "14px", fontWeight: "500" }}>{entry.assetName} <span style={{ color: "#6E6A72", fontFamily: "monospace", fontSize: "12px" }}>({entry.assetId})</span></div>
+            <div style={{ fontSize: "12px", color: "#8A8590", marginTop: "2px" }}>
               {entry.by?.name}{entry.by?.email && ` · ${entry.by.email}`}
             </div>
-            {entry.location && <div style={{ fontSize: "11px", color: "#444", marginTop: "2px" }}>{entry.location}</div>}
+            {entry.location && <div style={{ fontSize: "11px", color: "#A09A94", marginTop: "2px" }}>{entry.location}</div>}
           </div>
           <div style={{ textAlign: "right" }}>
             <span style={{ ...S.badge(entry.action === "returned" ? "available" : "checked_out"), fontSize: "10px" }}>
               {entry.action === "returned" ? "Returned" : "Checked out"}
             </span>
             {entry.timestamp && (
-              <div style={{ fontSize: "11px", color: "#555", marginTop: "4px" }}>
+              <div style={{ fontSize: "11px", color: "#6E6A72", marginTop: "4px" }}>
                 {new Date(entry.timestamp.seconds * 1000).toLocaleString()}
               </div>
             )}
@@ -986,7 +961,7 @@ function CheckoutFlow({ asset, onBack, onDone }) {
           <div style={{ fontSize: "18px", fontWeight: "500", marginBottom: "8px" }}>
             {isReturn ? "Returned!" : "Checked out!"}
           </div>
-          <div style={{ color: "#666", fontSize: "14px", marginBottom: "24px" }}>
+          <div style={{ color: "#8A8590", fontSize: "14px", marginBottom: "24px" }}>
             {isReturn ? `${asset.name} is back in inventory.` : `${asset.name} is checked out to ${name}.`}
           </div>
           <button style={S.btn} onClick={onDone}>Back to inventory</button>
@@ -1002,9 +977,9 @@ function CheckoutFlow({ asset, onBack, onDone }) {
       </button>
       <div style={S.card}>
         <div style={{ marginBottom: "20px" }}>
-          <div style={{ fontSize: "11px", color: "#555", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>{isReturn ? "Return" : "Check out"}</div>
+          <div style={{ fontSize: "11px", color: "#6E6A72", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>{isReturn ? "Return" : "Check out"}</div>
           <div style={{ fontSize: "20px", fontWeight: "500" }}>{asset.name}</div>
-          <div style={{ fontSize: "12px", color: "#555", marginTop: "2px" }}>{asset.assetId} · {asset.location}</div>
+          <div style={{ fontSize: "12px", color: "#6E6A72", marginTop: "2px" }}>{asset.assetId} · {asset.location}</div>
         </div>
         <div style={S.divider} />
         <div style={{ marginBottom: "16px" }}>

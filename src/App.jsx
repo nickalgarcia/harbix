@@ -7,37 +7,16 @@ import {
   onSnapshot, query, orderBy, serverTimestamp, getDocs
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import {
+  MapPin, Camera, MessageCircle, CalendarClock, Mail, Clock,
+  User, Lock, Package, LayoutGrid, List, Inbox, Sparkles,
+  ChevronLeft, Check
+} from "lucide-react";
 import { auth, db, storage, googleProvider } from "./firebase";
+import { B, BTN, INP, HarbixLogo, Chip, Avatar } from "./theme";
 import HarbixInventory from "./HarbixInventory";
 
-// ── Brand ─────────────────────────────────────────────────────
-const B = {
-  orange:      "#EF6423",
-  orangeHov:   "#D4561E",
-  orangeLight: "#FFF4EF",
-  navy:        "#4E4D5F",
-  navyDark:    "#3B3A4A",
-  deep:        "#20101B",
-  white:       "#FFFFFF",
-  offWhite:    "#F8F7F5",
-  cream:       "#F2F0EC",
-  border:      "#E8E4DE",
-  muted:       "#A09A94",
-  text:        "#1C1B22",
-  textSub:     "#6E6A72",
-  green:       "#10B981",
-  greenBg:     "#D1FAE5",
-  greenText:   "#065F46",
-  blue:        "#3B82F6",
-  blueBg:      "#DBEAFE",
-  blueText:    "#1E40AF",
-  red:         "#EF4444",
-  redBg:       "#FEE2E2",
-  redText:     "#991B1B",
-  amber:       "#F59E0B",
-  amberBg:     "#FEF3C7",
-  amberText:   "#92400E",
-};
+// ── Brand palette, buttons, inputs, logo, chips, avatars now live in src/theme.js ──
 
 const STATUS = {
   waiting:   { label: "Waiting",  bg: B.amberBg,  text: B.amberText, dot: B.amber },
@@ -99,38 +78,12 @@ function dataURLtoBlob(dataURL) {
 }
 
 // ── Shared UI ─────────────────────────────────────────────────
-function HarbixLogo({ dark=false, size="md" }) {
-  const sz = { sm:15, md:18, lg:26 }[size];
-  return (
-    <div style={{ display:"flex", alignItems:"center", gap:7 }}>
-      <span style={{ fontSize:sz+2, fontWeight:900, color:B.orange, fontFamily:"Georgia,serif", fontStyle:"italic", lineHeight:1 }}>»</span>
-      <span style={{ fontSize:sz, fontWeight:800, color:dark?B.white:B.text, letterSpacing:"-0.04em", fontFamily:"'DM Sans',system-ui,sans-serif" }}>Harbix</span>
-    </div>
-  );
-}
-
 function StatusBadge({ status }) {
   const s = STATUS[status] || STATUS.waiting;
   return (
     <span style={{ display:"inline-flex", alignItems:"center", gap:5, padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:700, letterSpacing:"0.03em", background:s.bg, color:s.text, whiteSpace:"nowrap" }}>
       <span style={{ width:6, height:6, borderRadius:"50%", background:s.dot, flexShrink:0 }} />
       {s.label}
-    </span>
-  );
-}
-
-function Avatar({ initials, size=32, color=B.navy }) {
-  return (
-    <div style={{ width:size, height:size, borderRadius:"50%", background:color, color:B.white, display:"flex", alignItems:"center", justifyContent:"center", fontSize:size*0.35, fontWeight:800, flexShrink:0, fontFamily:"'DM Sans',sans-serif" }}>
-      {initials}
-    </div>
-  );
-}
-
-function Chip({ icon, children }) {
-  return (
-    <span style={{ display:"inline-flex", alignItems:"center", gap:4, fontSize:11, color:B.textSub, background:B.cream, padding:"3px 9px", borderRadius:6, border:`1px solid ${B.border}`, whiteSpace:"nowrap" }}>
-      {icon}<span>{children}</span>
     </span>
   );
 }
@@ -146,15 +99,6 @@ function Field({ label, error, optional, children }) {
     </div>
   );
 }
-
-const INP = (err) => ({
-  width:"100%", padding:"12px 14px", borderRadius:10,
-  border:`1.5px solid ${err?B.red:B.border}`,
-  fontSize:14, color:B.text, outline:"none",
-  boxSizing:"border-box", background:B.white,
-  fontFamily:"'DM Sans',system-ui,sans-serif",
-  WebkitAppearance:"none",
-});
 
 // ── Conversational Public Form ────────────────────────────────
 function PublicForm({ onSubmit }) {
@@ -225,7 +169,7 @@ function PublicForm({ onSubmit }) {
 
   if (done) return (
     <div style={{ height:"100dvh", background:`linear-gradient(160deg,${B.deep} 0%,${B.navy} 100%)`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"40px 24px", textAlign:"center", fontFamily:"'DM Sans',system-ui,sans-serif" }}>
-      <div style={{ width:80, height:80, borderRadius:"50%", background:"rgba(16,185,129,0.15)", border:"2px solid rgba(16,185,129,0.35)", color:B.green, fontSize:36, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28 }}>✓</div>
+      <div style={{ width:80, height:80, borderRadius:"50%", background:"rgba(16,185,129,0.15)", border:"2px solid rgba(16,185,129,0.35)", color:B.green, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:28 }}><Check size={38} strokeWidth={2.5} /></div>
       <h2 style={{ margin:"0 0 12px", fontSize:28, fontWeight:800, color:B.white, letterSpacing:"-0.04em" }}>
         Got it{answers.name?`, ${answers.name.split(" ")[0]}`:""}!
       </h2>
@@ -235,7 +179,7 @@ function PublicForm({ onSubmit }) {
       {tip && (
         <div style={{ background:"rgba(239,100,35,0.12)", border:"1.5px solid rgba(239,100,35,0.35)", borderRadius:14, padding:"14px 16px", margin:"0 auto 36px", maxWidth:320, textAlign:"left" }}>
           <div style={{ fontSize:11, fontWeight:700, color:B.orange, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:5 }}>
-            ✨ While you wait
+            <Sparkles size={12} style={{ verticalAlign:"-2px", marginRight:5 }} />While you wait
           </div>
           <div style={{ fontSize:14, color:"rgba(255,255,255,0.85)", lineHeight:1.5 }}>{tip}</div>
         </div>
@@ -262,7 +206,7 @@ function PublicForm({ onSubmit }) {
       <div style={{ flex:1, overflowY:"auto", padding:"28px 24px 16px", display:"flex", flexDirection:"column" }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:36, flexShrink:0 }}>
           {step > 0 && (
-            <button onClick={()=>go(-1)} style={{ width:34, height:34, background:"rgba(255,255,255,0.1)", border:"none", borderRadius:"50%", color:"rgba(255,255,255,0.7)", fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
+            <button onClick={()=>go(-1)} style={{ width:34, height:34, background:"rgba(255,255,255,0.1)", border:"none", borderRadius:"50%", color:"rgba(255,255,255,0.7)", fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}><ChevronLeft size={18} /></button>
           )}
           <span style={{ fontSize:12, color:"rgba(255,255,255,0.35)", fontWeight:600, letterSpacing:"0.06em" }}>{step+1} of {STEPS.length}</span>
         </div>
@@ -384,7 +328,7 @@ function TicketCard({ ticket, agent, onClaim, onUnclaim, onClick }) {
   const isMine      = ticket.claimedBy?.id === agent?.id;
   const isUnclaimed = !ticket.claimedBy;
   return (
-    <div style={{ background:B.white, border:`1px solid ${B.border}`, borderRadius:16, overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,0.05)" }}>
+    <div className="hx-card" style={{ background:B.white, border:`1px solid ${B.border}`, borderRadius:16, overflow:"hidden" }}>
       <div onClick={onClick} style={{ padding:"16px 16px 12px", cursor:"pointer" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
           <div style={{ display:"flex", alignItems:"center", gap:9 }}>
@@ -398,14 +342,20 @@ function TicketCard({ ticket, agent, onClaim, onUnclaim, onClick }) {
         </div>
         <div style={{ display:"flex", gap:5, marginBottom:10, flexWrap:"wrap" }}>
           {ticket.department && <DeptBadge department={ticket.department} />}
-          <Chip icon="📍">{ticket.location}</Chip>
+          <Chip icon={<MapPin size={12} strokeWidth={2.2} />}>{ticket.location}</Chip>
           {ticket.priority && ticket.priority !== "normal" && <PriorityBadge priority={ticket.priority} />}
-          {ticket.assignedTo && <Chip icon="👤">{ticket.assignedTo.name.split(" ")[0]}</Chip>}
-          {ticket.photoURL && <Chip icon="📷">Photo</Chip>}
-          {ticket.comments?.length > 0 && <Chip icon="💬">{ticket.comments.length}</Chip>}
-          {ticket.dueDate && <Chip icon="⏰">{ticket.dueDate}</Chip>}
+          {ticket.assignedTo && <Chip icon={<User size={12} strokeWidth={2.2} />}>{ticket.assignedTo.name.split(" ")[0]}</Chip>}
+          {ticket.photoURL && <Chip icon={<Camera size={12} strokeWidth={2.2} />}>Photo</Chip>}
+          {ticket.comments?.length > 0 && <Chip icon={<MessageCircle size={12} strokeWidth={2.2} />}>{ticket.comments.length}</Chip>}
+          {ticket.dueDate && <Chip icon={<CalendarClock size={12} strokeWidth={2.2} />}>{ticket.dueDate}</Chip>}
         </div>
         <p style={{ margin:0, fontSize:13, color:B.textSub, lineHeight:1.55, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>{ticket.issue}</p>
+        {ticket.ai?.firstStep && (
+          <p style={{ margin:"10px 0 0", fontSize:11.5, color:B.orange, lineHeight:1.45, display:"flex", alignItems:"flex-start", gap:5 }}>
+            <Sparkles size={13} style={{ flexShrink:0, marginTop:1 }} />
+            <span style={{ display:"-webkit-box", WebkitLineClamp:1, WebkitBoxOrient:"vertical", overflow:"hidden" }}>{ticket.ai.firstStep}</span>
+          </p>
+        )}
       </div>
       {ticket.status !== "closed" && (
         <div style={{ borderTop:`1px solid ${B.border}`, padding:"10px 14px", background:B.offWhite, display:"flex", gap:8 }}>
@@ -434,13 +384,13 @@ function TicketRow({ ticket, agent, onClaim, onUnclaim, onClick }) {
   const isMine      = ticket.claimedBy?.id === agent?.id;
   const isUnclaimed = !ticket.claimedBy;
   return (
-    <div style={{ background:B.white, border:`1px solid ${B.border}`, borderRadius:12, padding:"13px 16px", display:"flex", alignItems:"center", gap:12 }}>
+    <div className="hx-row" style={{ background:B.white, border:`1px solid ${B.border}`, borderRadius:12, padding:"13px 16px", display:"flex", alignItems:"center", gap:12 }}>
       <Avatar initials={ticket.name.split(" ").map(w=>w[0]).join("").slice(0,2)} size={36} />
       <div style={{ flex:1, minWidth:0, cursor:"pointer" }} onClick={onClick}>
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3, flexWrap:"wrap" }}>
           <span style={{ fontWeight:700, fontSize:14, color:B.text }}>{ticket.name}</span>
           {ticket.department && <DeptBadge department={ticket.department} />}
-          <Chip icon="📍">{ticket.location}</Chip>
+          <Chip icon={<MapPin size={12} strokeWidth={2.2} />}>{ticket.location}</Chip>
         </div>
         <p style={{ margin:0, fontSize:12, color:B.textSub, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{ticket.issue}</p>
       </div>
@@ -587,17 +537,17 @@ function TicketDetail({ ticket, agent, team, onUpdate, onBack }) {
         </div>
       )}
       <div style={{ background:B.navy, padding:"0 16px", height:54, display:"flex", alignItems:"center", gap:12, position:"sticky", top:0, zIndex:10 }}>
-        <button onClick={onBack} style={{ background:"none", border:"none", color:"rgba(255,255,255,0.7)", fontSize:24, cursor:"pointer", padding:0, lineHeight:1 }}>‹</button>
+        <button onClick={onBack} style={{ background:"none", border:"none", color:"rgba(255,255,255,0.7)", fontSize:24, cursor:"pointer", padding:0, lineHeight:1, display:"flex", alignItems:"center" }}><ChevronLeft size={24} /></button>
         <span style={{ fontWeight:700, fontSize:15, color:B.white, flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{ticket.name}</span>
         <StatusBadge status={ticket.status} />
       </div>
-      <div style={{ padding:"16px", maxWidth:640, margin:"0 auto" }}>
+      <div className="hx-fade" style={{ padding:"16px", maxWidth:720, margin:"0 auto" }}>
         <div style={{ background:B.white, borderRadius:16, padding:"20px", marginBottom:14, border:`1px solid ${B.border}` }}>
           <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap" }}>
             {ticket.department && <DeptBadge department={ticket.department} />}
-            <Chip icon="📍">{ticket.location}</Chip>
-            {ticket.contact && <Chip icon="📬">{ticket.contact}</Chip>}
-            <Chip icon="🕐">{timeAgo(ticket.createdAt)}</Chip>
+            <Chip icon={<MapPin size={12} strokeWidth={2.2} />}>{ticket.location}</Chip>
+            {ticket.contact && <Chip icon={<Mail size={12} strokeWidth={2.2} />}>{ticket.contact}</Chip>}
+            <Chip icon={<Clock size={12} strokeWidth={2.2} />}>{timeAgo(ticket.createdAt)}</Chip>
           </div>
           <p style={{ margin:0, fontSize:15, color:B.text, lineHeight:1.7 }}>{ticket.issue}</p>
           {ticket.photoURL && (
@@ -612,7 +562,7 @@ function TicketDetail({ ticket, agent, team, onUpdate, onBack }) {
         {ticket.ai?.firstStep && (
           <div style={{ background:B.orangeLight, border:"1.5px solid #FDDECE", borderRadius:16, padding:"16px 20px", marginBottom:14 }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
-              <div style={{ fontSize:11, fontWeight:700, color:B.orange, textTransform:"uppercase", letterSpacing:"0.08em" }}>✨ Suggested First Step</div>
+              <div style={{ fontSize:11, fontWeight:700, color:B.orange, textTransform:"uppercase", letterSpacing:"0.08em" }}><Sparkles size={12} style={{ verticalAlign:"-2px", marginRight:5 }} />Suggested First Step</div>
               {typeof ticket.ai.confidence==="number" && ticket.ai.confidence>0 && (
                 <span style={{ fontSize:11, color:B.muted, fontWeight:600 }}>{Math.round(ticket.ai.confidence*100)}% match</span>
               )}
@@ -890,11 +840,12 @@ function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInv
   return (
     <div style={{ minHeight:"100vh", background:B.offWhite, fontFamily:"'DM Sans',system-ui,sans-serif" }}>
       {showNew && <NewTicketModal agent={agent} onClose={()=>setShowNew(false)} onSubmit={onAdd} />}
-      <div style={{ background:B.navy, padding:"0 16px", height:54, display:"flex", alignItems:"center", justifyContent:"space-between", position:"sticky", top:0, zIndex:10 }}>
+      <div style={{ background:B.navy, padding:"0 16px", position:"sticky", top:0, zIndex:10 }}>
+        <div className="hx-shell" style={{ height:54, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
         <HarbixLogo dark size="sm" />
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <button style={{ ...BTN.orangeSolid, fontSize:13, padding:"7px 14px", borderRadius:8 }} onClick={()=>setShowNew(true)}>+ New</button>
-          <button style={{ ...BTN.ghost, fontSize:13, padding:"7px 14px", borderRadius:8, background:"rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.7)", border:"1.5px solid rgba(255,255,255,0.15)" }} onClick={onInventory}>📦 Inventory</button>
+          <button style={{ ...BTN.ghost, fontSize:13, padding:"7px 14px", borderRadius:8, background:"rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.7)", border:"1.5px solid rgba(255,255,255,0.15)" }} onClick={onInventory}><Package size={15} /> Inventory</button>
           <div style={{ display:"flex", alignItems:"center", gap:7, cursor:"pointer" }} onClick={onLogout}>
             {agent.photo
               ? <img src={agent.photo} alt="avatar" style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover" }} />
@@ -903,25 +854,29 @@ function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInv
             <span style={{ fontSize:12, color:"rgba(255,255,255,0.55)", fontWeight:500 }}>Sign out</span>
           </div>
         </div>
+        </div>
       </div>
       <div style={{ background:B.navy, padding:"0 16px 16px" }}>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
-          {[["All",counts.all,B.white],["Waiting",counts.waiting,B.amber],["Mine",counts.mine,B.orange],["Done",counts.done,B.green]].map(([label,count,color])=>(
-            <div key={label} style={{ background:"rgba(255,255,255,0.07)", borderRadius:12, padding:"12px 10px", textAlign:"center" }}>
+        <div className="hx-shell" style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
+          {[["All","all",counts.all,B.white],["Waiting","waiting",counts.waiting,B.amber],["Mine","mine",counts.mine,B.orange],["Done","done",counts.done,B.green]].map(([label,key,count,color])=>(
+            <button key={label} onClick={()=>setTab(key)} style={{ background:tab===key?"rgba(255,255,255,0.14)":"rgba(255,255,255,0.07)", border:tab===key?"1.5px solid rgba(255,255,255,0.25)":"1.5px solid transparent", borderRadius:12, padding:"12px 10px", textAlign:"center", cursor:"pointer", fontFamily:"inherit" }}>
               <div style={{ fontSize:22, fontWeight:800, color, lineHeight:1, letterSpacing:"-0.03em" }}>{count}</div>
               <div style={{ fontSize:11, color:"rgba(255,255,255,0.4)", marginTop:3, fontWeight:600 }}>{label}</div>
-            </div>
+            </button>
           ))}
         </div>
       </div>
-      <div style={{ background:B.white, borderBottom:`1px solid ${B.border}`, padding:"0 16px", display:"flex", overflowX:"auto" }}>
+      <div style={{ background:B.white, borderBottom:`1px solid ${B.border}`, padding:"0 16px" }}>
+      <div className="hx-shell" style={{ display:"flex", overflowX:"auto" }}>
         {[["all","All"],["waiting","Waiting"],["mine","My Queue"],["assigned","Assigned to Me"],["critical","Critical"],["done","Done"]].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)} style={{ background:"none", border:"none", borderBottom:`2.5px solid ${tab===key?B.orange:"transparent"}`, padding:"13px 14px", fontSize:13, fontWeight:tab===key?700:500, color:tab===key?B.orange:B.textSub, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
             {label}{key!=="all"&&` (${counts[key]||0})`}
           </button>
         ))}
       </div>
-      <div style={{ padding:"12px 16px 0", display:"flex", gap:6, flexWrap:"wrap" }}>
+      </div>
+      <div style={{ padding:"12px 16px 0" }}>
+      <div className="hx-shell" style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
         <button onClick={()=>setDeptFilter("all")} style={{ padding:"6px 13px", borderRadius:20, border:`1.5px solid ${deptFilter==="all"?B.navy:B.border}`, background:deptFilter==="all"?B.navy:B.white, color:deptFilter==="all"?B.white:B.textSub, fontSize:12, fontWeight:deptFilter==="all"?700:500, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
           All Depts
         </button>
@@ -932,39 +887,40 @@ function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInv
           </button>
         ))}
       </div>
-      <div style={{ padding:"12px 16px", display:"flex", gap:8 }}>
+      </div>
+      <div style={{ padding:"12px 16px" }}>
+      <div className="hx-shell" style={{ display:"flex", gap:8 }}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search tickets…" style={{ flex:1, padding:"10px 14px", borderRadius:10, border:`1.5px solid ${B.border}`, fontSize:13, color:B.text, outline:"none", fontFamily:"inherit", background:B.white, WebkitAppearance:"none" }} />
         <div style={{ display:"flex", gap:4 }}>
-          {[["card","▦"],["list","☰"]].map(([v,icon])=>(
+          {[["card",<LayoutGrid size={16} />],["list",<List size={16} />]].map(([v,icon])=>(
             <button key={v} onClick={()=>setView(v)} style={{ width:38, height:38, borderRadius:8, border:`1.5px solid ${view===v?B.orange:B.border}`, background:view===v?B.orangeLight:B.white, color:view===v?B.orange:B.textSub, fontSize:15, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>{icon}</button>
           ))}
         </div>
       </div>
+      </div>
       <div style={{ padding:"0 16px 40px" }}>
+      <div className="hx-shell">
         {filtered.length===0 ? (
           <div style={{ textAlign:"center", padding:"60px 0", color:B.muted }}>
-            <div style={{ fontSize:36, marginBottom:12 }}>📭</div>
+            <div style={{ display:"flex", justifyContent:"center", marginBottom:12 }}><Inbox size={36} strokeWidth={1.5} color={B.muted} /></div>
             <div style={{ fontSize:14, fontWeight:600 }}>No tickets here</div>
           </div>
         ) : view==="card" ? (
-          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          <div className="hx-grid hx-fade">
             {filtered.map(t=><TicketCard key={t.id} ticket={t} agent={agent} onClaim={claim} onUnclaim={unclaim} onClick={()=>setSelected(t.id)} />)}
           </div>
         ) : (
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          <div className="hx-fade" style={{ display:"flex", flexDirection:"column", gap:8 }}>
             {filtered.map(t=><TicketRow key={t.id} ticket={t} agent={agent} onClaim={claim} onUnclaim={unclaim} onClick={()=>setSelected(t.id)} />)}
           </div>
         )}
+      </div>
       </div>
     </div>
   );
 }
 
-// ── Button tokens ─────────────────────────────────────────────
-const BTN = {
-  orangeSolid: { background:B.orange, color:B.white, border:"none", borderRadius:10, padding:"10px 20px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"'DM Sans',system-ui,sans-serif", display:"inline-flex", alignItems:"center", justifyContent:"center", gap:6 },
-  ghost:       { background:B.white, color:B.textSub, border:`1.5px solid ${B.border}`, borderRadius:10, padding:"10px 20px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"'DM Sans',system-ui,sans-serif" },
-};
+// ── Button tokens imported from src/theme.js ──────────────────
 
 // ── Root App — real Firebase wired up ────────────────────────
 export default function App() {
@@ -1148,8 +1104,8 @@ export default function App() {
       {/* Demo switcher — remove before handing off to church */}
       {page !== "login" && (
         <div style={{ position:"fixed", bottom:16, right:16, zIndex:200, display:"flex", gap:8 }}>
-          <button style={{ ...BTN.ghost, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.12)" }} onClick={()=>setPage("public")}>👤 User</button>
-          <button style={{ ...BTN.orangeSolid, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.15)" }} onClick={()=>setPage("login")}>🔒 Agent</button>
+          <button style={{ ...BTN.ghost, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.12)" }} onClick={()=>setPage("public")}><User size={13} /> User</button>
+          <button style={{ ...BTN.orangeSolid, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.15)" }} onClick={()=>setPage("login")}><Lock size={13} /> Agent</button>
         </div>
       )}
       {page === "public" && <PublicForm onSubmit={handleSubmit} />}

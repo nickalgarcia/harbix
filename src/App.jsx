@@ -688,6 +688,13 @@ function TicketDetail({ ticket, agent, team, onUpdate, onBack }) {
                 <button key={t} onClick={()=>setCommentType(t)} style={{ flex:1, padding:"7px 10px", borderRadius:8, border:`1.5px solid ${commentType===t?B.orange:B.border}`, background:commentType===t?B.orangeLight:B.white, color:commentType===t?B.orange:B.textSub, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>{label}</button>
               ))}
             </div>
+            {commentType==="reply" && (
+              <div style={{ fontSize:11, marginBottom:8, padding:"6px 10px", borderRadius:8, background: ticket.contact?.includes("@") ? B.greenBg : B.amberBg, color: ticket.contact?.includes("@") ? B.greenText : B.amberText, fontWeight:600 }}>
+                {ticket.contact?.includes("@")
+                  ? `Email will be sent to ${ticket.contact}`
+                  : `No email on file — submitter provided "${ticket.contact||"nothing"}" as contact. Email will not be sent.`}
+              </div>
+            )}
             <textarea value={comment} onChange={e=>setComment(e.target.value)}
               placeholder={commentType==="reply"?"Write a reply — submitter will be notified…":"Add a note only your team can see…"}
               style={{ ...INP(false), resize:"none", minHeight:85, fontFamily:"inherit", marginBottom:10 }} rows={3} />

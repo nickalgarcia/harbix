@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import {
-  signInWithPopup, signOut, onAuthStateChanged
+  signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged
 } from "firebase/auth";
 import {
   collection, addDoc, updateDoc, doc,
@@ -266,29 +266,64 @@ function PublicForm({ onSubmit }) {
 }
 
 // ── Google Login ──────────────────────────────────────────────
+// Safari (desktop + iOS) blocks cross-origin popup postMessage during MFA flows.
+// Detect Safari by checking for "safari" in UA but not "chrome" or "android".
+const isSafariBrowser = typeof navigator !== "undefined" &&
+  /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+function buildAgent(user) {
+  return {
+    id:     user.uid,
+    name:   user.displayName,
+    email:  user.email,
+    avatar: (user.displayName || "??").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(),
+    photo:  user.photoURL,
+  };
+}
+
 function GoogleLogin({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr]         = useState("");
 
+  // On Safari, signInWithRedirect was used — pick up the result after the redirect lands.
+  useEffect(() => {
+    if (!isSafariBrowser) return;
+    setLoading(true);
+    getRedirectResult(auth)
+      .then((result) => {
+        if (!result) { setLoading(false); return; }
+        const { email } = result.user;
+        if (!email.endsWith("@godchasers.church")) {
+          signOut(auth);
+          setErr("Access restricted to @godchasers.church accounts only.");
+          setLoading(false);
+          return;
+        }
+        onLogin(buildAgent(result.user));
+      })
+      .catch(() => {
+        setErr("Sign-in failed. Please try again.");
+        setLoading(false);
+      });
+  }, []);
+
   const handleGoogleLogin = async () => {
     setLoading(true); setErr("");
     try {
+      if (isSafariBrowser) {
+        // Redirect flow: browser navigates away; no further code runs here.
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
       const result = await signInWithPopup(auth, googleProvider);
-      const email  = result.user.email;
+      const { email } = result.user;
       if (!email.endsWith("@godchasers.church")) {
         await signOut(auth);
         setErr("Access restricted to @godchasers.church accounts only.");
         setLoading(false);
         return;
       }
-      const agent = {
-        id:     result.user.uid,
-        name:   result.user.displayName,
-        email,
-        avatar: result.user.displayName.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(),
-        photo:  result.user.photoURL,
-      };
-      onLogin(agent);
+      onLogin(buildAgent(result.user));
     } catch (e) {
       setErr("Sign-in failed. Please try again.");
     }

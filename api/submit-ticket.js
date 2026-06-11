@@ -1,5 +1,10 @@
 // api/submit-ticket.js
-// Vercel serverless function — sends email notification via EmailJS on ticket submission
+// Vercel serverless function — emails the tech inbox when a new ticket is submitted.
+// Migrated from EmailJS → Resend. Request body contract unchanged (no App.jsx edits needed).
+
+import { sendEmail, newTicketEmail } from "./_lib/email.js";
+
+const TICKETS_TO = process.env.TICKETS_TO_EMAIL || "tech@godchasers.church";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -8,51 +13,22 @@ export default async function handler(req, res) {
 
   const { name, location, issue, contact, photoURL, firestoreId } = req.body;
 
-  const EMAILJS_SERVICE_ID   = process.env.EMAILJS_SERVICE_ID;
-  const EMAILJS_TEMPLATE_ID  = process.env.EMAILJS_TEMPLATE_ID;
-  const EMAILJS_PUBLIC_KEY   = process.env.EMAILJS_PUBLIC_KEY;
-  const EMAILJS_PRIVATE_KEY  = process.env.EMAILJS_PRIVATE_KEY;
-
-  if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY || !EMAILJS_PRIVATE_KEY) {
-    console.error("Missing EmailJS credentials");
-    return res.status(500).json({ error: "EmailJS credentials not configured" });
-  }
-
   try {
-    console.log("Sending EmailJS notification for ticket:", firestoreId);
+    console.log("Sending new-ticket notification for:", firestoreId);
 
-    const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        service_id:   EMAILJS_SERVICE_ID,
-        template_id:  EMAILJS_TEMPLATE_ID,
-        user_id:      EMAILJS_PUBLIC_KEY,
-        accessToken:  EMAILJS_PRIVATE_KEY,
-        template_params: {
-          name:       name       || "Unknown",
-          location:   location   || "Unknown",
-          contact:    contact    || "Not provided",
-          issue:      issue      || "",
-          photo_note: photoURL   ? `Photo attached: ${photoURL}` : "No photo attached",
-          ticket_id:  firestoreId || "",
-        },
-      }),
+    const result = await sendEmail({
+      to:      TICKETS_TO,
+      subject: `[Harbix] New ticket — ${location || "Unknown location"}`,
+      html:    newTicketEmail({ name, location, contact, issue, photoURL, ticketId: firestoreId }),
+      // If the submitter left an email, replying to the notification reaches them directly
+      replyTo: contact?.includes("@") ? contact : undefined,
     });
 
-    const text = await response.text();
-    console.log("EmailJS response status:", response.status);
-    console.log("EmailJS response:", text);
-
-    if (!response.ok) {
-      console.error("EmailJS failed:", text);
-      return res.status(500).json({ error: "EmailJS failed", detail: text });
-    }
-
-    return res.status(200).json({ success: true });
+    console.log("New-ticket email sent:", result.id);
+    return res.status(200).json({ success: true, emailId: result.id });
 
   } catch (err) {
-    console.error("Serverless function error:", err.message);
-    return res.status(500).json({ error: "Internal server error" });
+    console.error("submit-ticket email error:", err.message);
+    return res.status(500).json({ error: "Email send failed", detail: err.message });
   }
 }

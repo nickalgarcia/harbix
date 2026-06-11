@@ -8,7 +8,6 @@ import { db } from "./firebase";
 import { B, HarbixLogo } from "./theme";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const NOTIFY_EMAIL = "tech@godchasers.church";
 const BASE_URL = typeof window !== "undefined" ? window.location.origin : "https://harbix.vercel.app";
 
 const LOCATIONS = [
@@ -160,29 +159,23 @@ function exportInsuranceReport(assets) {
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
-// ─── EmailJS notification ─────────────────────────────────────────────────────
+// ─── Checkout notification (sent server-side via /api/notify-checkout) ───────
 async function sendCheckoutEmail(asset, checkoutData) {
   try {
-    const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
-    const templateId = import.meta.env.VITE_EMAILJS_INVENTORY_TEMPLATE_ID || import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
-    const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
-    if (!serviceId || !templateId || !publicKey) return;
-    await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+    await fetch("/api/notify-checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        service_id: serviceId,
-        template_id: templateId,
-        user_id: publicKey,
-        template_params: {
-          to_email: NOTIFY_EMAIL,
-          subject: `[Harbix Inventory] ${asset.name} checked out`,
-          message: `Asset: ${asset.name} (${asset.assetId})\nChecked out by: ${checkoutData.name}${checkoutData.email ? ` <${checkoutData.email}>` : ""}\nLocation: ${asset.location}\nTime: ${new Date().toLocaleString()}`,
-        },
+        action:       checkoutData.action || "checkout", // pass "checkin" from the check-in flow if applicable
+        asset_name:   asset.name,
+        asset_id:     asset.assetId,
+        person_name:  checkoutData.name,
+        person_email: checkoutData.email || "",
+        notes:        checkoutData.notes || "",
       }),
     });
   } catch (e) {
-    console.log("Email notification skipped:", e.message);
+    console.error("Checkout notification failed:", e); // non-fatal
   }
 }
 
@@ -934,6 +927,7 @@ function CheckoutFlow({ asset, onBack, onDone }) {
           notes: notes.trim() || null,
           timestamp: serverTimestamp(),
         });
+        await sendCheckoutEmail(asset, { name: name.trim(), email: email.trim(), notes: notes.trim(), action: "checkin" });
       } else {
         const checkoutData = { name: name.trim(), email: email.trim() || null, date: serverTimestamp() };
         await updateDoc(assetRef, { status: "checked_out", checkedOutTo: checkoutData });
@@ -943,7 +937,7 @@ function CheckoutFlow({ asset, onBack, onDone }) {
           notes: notes.trim() || null,
           timestamp: serverTimestamp(),
         });
-        await sendCheckoutEmail(asset, { name: name.trim(), email: email.trim() });
+        await sendCheckoutEmail(asset, { name: name.trim(), email: email.trim(), notes: notes.trim() });
       }
       setDone(true);
     } catch (e) {

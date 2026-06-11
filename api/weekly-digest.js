@@ -1,9 +1,11 @@
 // api/weekly-digest.js
-// Vercel Cron Job — sends a weekly summary digest to tech@godchasers.church
-// Schedule is set in vercel.json (recommended: Mondays at 8am CT = "0 14 * * 1")
+// Vercel Cron Job — sends a weekly summary digest (default: pd@godchasers.church)
+// Schedule is set in vercel.json (Mondays at 8am CT = "0 14 * * 1")
+// Migrated from EmailJS → Resend. Data logic unchanged; only the send section is new.
 
 import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getFirestore }                  from "firebase-admin/firestore";
+import { sendEmail, weeklyDigestEmail }  from "./_lib/email.js";
 
 // ── Firebase Admin init (safe for multiple invocations) ───────────────────────
 function getAdminDb() {
@@ -21,7 +23,6 @@ function getAdminDb() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function startOfWeek() {
-  // Returns a Date for last Monday at 00:00:00 local (UTC for server)
   const now  = new Date();
   const day  = now.getUTCDay(); // 0=Sun … 6=Sat
   const diff = day === 0 ? 6 : day - 1; // days since Monday
@@ -32,7 +33,6 @@ function startOfWeek() {
 }
 
 function toTS(val) {
-  // Normalize Firestore Timestamp, JS Date, or ISO string → Date
   if (!val) return null;
   if (val?.toDate) return val.toDate();
   return new Date(val);
@@ -64,16 +64,16 @@ export default async function handler(req, res) {
     const ticketSnap = await db.collection("tickets").get();
     const tickets    = ticketSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    const openStatuses    = ["waiting", "claimed", "in_progress"];
+    const openStatuses     = ["waiting", "claimed", "in_progress"];
     const resolvedStatuses = ["done", "closed"];
 
-    const openTickets     = tickets.filter(t => openStatuses.includes(t.status));
+    const openTickets      = tickets.filter(t => openStatuses.includes(t.status));
     const resolvedThisWeek = tickets.filter(t => {
       if (!resolvedStatuses.includes(t.status)) return false;
       const updated = toTS(t.updatedAt);
       return updated && updated >= week;
     });
-    const newThisWeek     = tickets.filter(t => {
+    const newThisWeek      = tickets.filter(t => {
       const created = toTS(t.createdAt);
       return created && created >= week;
     });
@@ -83,16 +83,10 @@ export default async function handler(req, res) {
       .sort((a, b) => toTS(a.createdAt) - toTS(b.createdAt))
       .slice(0, 3)
       .map(t => {
-        const age  = daysSince(toTS(t.createdAt));
-        const who  = t.assignedTo?.name || t.claimedBy || "Unclaimed";
-        return `• ${t.location} — "${t.issue?.slice(0, 60)}${t.issue?.length > 60 ? "…" : ""}" (${age}d old, ${who})`;
+        const age = daysSince(toTS(t.createdAt));
+        const who = t.assignedTo?.name || t.claimedBy || "Unclaimed";
+        return `${t.location} — "${t.issue?.slice(0, 60)}${t.issue?.length > 60 ? "…" : ""}" (${age}d old, ${who})`;
       });
-
-    // Status breakdown of open tickets
-    const byStatus = openStatuses.reduce((acc, s) => {
-      acc[s] = openTickets.filter(t => t.status === s).length;
-      return acc;
-    }, {});
 
     // ── 2. Inventory ──────────────────────────────────────────────────────────
     const assetSnap = await db.collection("inventory").get();
@@ -117,50 +111,36 @@ export default async function handler(req, res) {
       .filter(a => a.daysOut !== null && a.daysOut >= 7)
       .sort((a, b) => b.daysOut - a.daysOut);
 
-    const overdueLines = overdueAssets.length
-      ? overdueAssets.map(a => `• ${a.name} (${a.assetId}) — checked out by ${a.checkedOutBy} for ${a.daysOut} days`).join("\n")
-      : "None — all good! ✅";
+    const overdueList = overdueAssets.map(
+      a => `${a.name} (${a.assetId}) — checked out by ${a.checkedOutBy} for ${a.daysOut} days`
+    );
 
-    // ── 3. Send via EmailJS ───────────────────────────────────────────────────
+    // ── 3. Send via Resend ────────────────────────────────────────────────────
     const dateLabel = new Date().toLocaleDateString("en-US", {
       weekday: "long", year: "numeric", month: "long", day: "numeric",
       timeZone: "America/Chicago",
     });
-    const emailRes = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        service_id:  process.env.EMAILJS_SERVICE_ID,
-        template_id: process.env.EMAILJS_DIGEST_TEMPLATE_ID,
-        user_id:     process.env.EMAILJS_PUBLIC_KEY,
-        accessToken: process.env.EMAILJS_PRIVATE_KEY,
-        template_params: {
-          to_email:            process.env.DIGEST_TO_EMAIL || "pd@godchasers.church",
-          subject:             `Harbix Weekly Digest — ${dateLabel}`,
-          week_of:             dateLabel,
-          // Ticket stats
-          new_tickets:         String(newThisWeek.length),
-          open_tickets:        String(openTickets.length),
-          resolved_tickets:    String(resolvedThisWeek.length),
-          oldest_tickets:      waitingLongest.join("\n") || "No open tickets — clean slate! 🎉",
-          // Inventory stats
-          total_assets:        String(assetCounts.total),
-          checked_out_assets:  String(assetCounts.checked_out),
-          needs_repair_assets: String(assetCounts.needs_repair),
-          overdue_list:        overdueLines,
-        },
+
+    const result = await sendEmail({
+      to:      process.env.DIGEST_TO_EMAIL || "pd@godchasers.church",
+      subject: `Harbix Weekly Digest — ${dateLabel}`,
+      html:    weeklyDigestEmail({
+        weekOf:            dateLabel,
+        newTickets:        newThisWeek.length,
+        openTickets:       openTickets.length,
+        resolvedTickets:   resolvedThisWeek.length,
+        oldestTickets:     waitingLongest,
+        totalAssets:       assetCounts.total,
+        checkedOutAssets:  assetCounts.checked_out,
+        needsRepairAssets: assetCounts.needs_repair,
+        overdueList,
       }),
     });
 
-    const emailText = await emailRes.text();
-    if (!emailRes.ok) {
-      console.error("EmailJS digest failed:", emailText);
-      return res.status(500).json({ error: "EmailJS failed", detail: emailText });
-    }
-
-    console.log("Weekly digest sent successfully");
+    console.log("Weekly digest sent:", result.id);
     return res.status(200).json({
       success: true,
+      emailId: result.id,
       stats: {
         newTickets: newThisWeek.length,
         openTickets: openTickets.length,

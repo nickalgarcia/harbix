@@ -1,5 +1,8 @@
 // api/notify-submitter.js
-// Sends email to submitter on reply or ticket resolution
+// Emails the submitter when an agent replies or resolves their ticket.
+// Migrated from EmailJS → Resend. Request body contract unchanged.
+
+import { sendEmail, submitterReplyEmail, submitterResolvedEmail } from "./_lib/email.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -12,52 +15,31 @@ export default async function handler(req, res) {
     ticket_id,
   } = req.body;
 
-  const EMAILJS_SERVICE_ID      = process.env.EMAILJS_SERVICE_ID;
-  const EMAILJS_PUBLIC_KEY      = process.env.EMAILJS_PUBLIC_KEY;
-  const EMAILJS_PRIVATE_KEY     = process.env.EMAILJS_PRIVATE_KEY;
-  const EMAILJS_REPLY_TEMPLATE  = process.env.EMAILJS_REPLY_TEMPLATE_ID;
-  const EMAILJS_RESOLVED_TEMPLATE = process.env.EMAILJS_RESOLVED_TEMPLATE_ID;
-
   // Only send if contact looks like an email
   if (!submitter_email || !submitter_email.includes("@")) {
     console.log("Contact is not an email — skipping submitter notification");
     return res.status(200).json({ success: true, skipped: true });
   }
 
-  const templateId = type === "reply" ? EMAILJS_REPLY_TEMPLATE : EMAILJS_RESOLVED_TEMPLATE;
-
-  if (!templateId) {
-    return res.status(500).json({ error: `Missing template ID for type: ${type}` });
+  if (type !== "reply" && type !== "resolved") {
+    return res.status(400).json({ error: `Unknown notification type: ${type}` });
   }
 
-  const templateParams = type === "reply"
-    ? { submitter_email, location, issue, agent_name, message, ticket_id }
-    : { submitter_email, location, issue, status, ticket_id };
+  const subject = type === "reply"
+    ? `[Harbix] Reply to your request — ${location || ""}`
+    : `[Harbix] Your request has been resolved`;
+
+  const html = type === "reply"
+    ? submitterReplyEmail({ location, issue, agentName: agent_name, message, ticketId: ticket_id })
+    : submitterResolvedEmail({ location, issue, status, ticketId: ticket_id });
 
   try {
-    const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        service_id:   EMAILJS_SERVICE_ID,
-        template_id:  templateId,
-        user_id:      EMAILJS_PUBLIC_KEY,
-        accessToken:  EMAILJS_PRIVATE_KEY,
-        template_params: templateParams,
-      }),
-    });
+    const result = await sendEmail({ to: submitter_email, subject, html });
+    console.log(`Submitter ${type} email sent:`, result.id);
+    return res.status(200).json({ success: true, emailId: result.id });
 
-    const text = await response.text();
-    console.log("Submitter notify status:", response.status, text);
-
-    if (!response.ok) {
-      console.error("Submitter notify failed:", text);
-      return res.status(500).json({ error: "EmailJS failed", detail: text });
-    }
-
-    return res.status(200).json({ success: true });
   } catch (err) {
     console.error("notify-submitter error:", err.message);
-    return res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Email send failed", detail: err.message });
   }
 }

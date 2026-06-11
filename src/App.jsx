@@ -9,7 +9,7 @@ import {
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import {
   MapPin, Camera, MessageCircle, CalendarClock, Mail, Clock,
-  User, Lock, Package, LayoutGrid, List, Inbox, Sparkles,
+  User, Package, LayoutGrid, List, Inbox, Sparkles,
   ChevronLeft, Check, Eye, Trash2
 } from "lucide-react";
 import { auth, db, storage, googleProvider } from "./firebase";
@@ -434,6 +434,7 @@ function DeptBadge({ department }) {
 function TicketDetail({ ticket, agent, team, onUpdate, readOnly=false, isAdmin=false, onDelete, onBack }) {
   const [comment, setComment]         = useState("");
   const [commentType, setCommentType] = useState("internal");
+  const [drafting, setDrafting]       = useState(false);
   const [lightbox, setLightbox]       = useState(false);
   const [saving, setSaving]           = useState(false);
 
@@ -702,6 +703,43 @@ function TicketDetail({ ticket, agent, team, onUpdate, readOnly=false, isAdmin=f
                 <button key={t} onClick={()=>setCommentType(t)} style={{ flex:1, padding:"7px 10px", borderRadius:8, border:`1.5px solid ${commentType===t?B.orange:B.border}`, background:commentType===t?B.orangeLight:B.white, color:commentType===t?B.orange:B.textSub, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>{label}</button>
               ))}
             </div>
+            {commentType==="reply" && (
+              <button
+                disabled={drafting}
+                onClick={async ()=>{
+                  setDrafting(true);
+                  try {
+                    const token = await auth.currentUser.getIdToken();
+                    const r = await fetch("/api/draft-reply", {
+                      method:  "POST",
+                      headers: { "Content-Type":"application/json", "Authorization":`Bearer ${token}` },
+                      body: JSON.stringify({
+                        ticket: {
+                          name:       ticket.name,
+                          issue:      ticket.issue,
+                          location:   ticket.location,
+                          status:     ticket.status,
+                          department: ticket.department,
+                          priority:   ticket.priority,
+                        },
+                        comments:  (ticket.comments||[]).slice(-6).map(c=>({ author:c.author, type:c.type, text:c.text })),
+                        agentName: agent.name,
+                      }),
+                    });
+                    const data = await r.json();
+                    if (data.draft) setComment(data.draft);
+                    else alert("Couldn't generate a draft right now — try again in a moment.");
+                  } catch (e) {
+                    console.error("Draft failed:", e);
+                    alert("Couldn't generate a draft right now — try again in a moment.");
+                  } finally {
+                    setDrafting(false);
+                  }
+                }}
+                style={{ ...BTN.ghost, width:"100%", marginBottom:8, padding:"9px 0", borderRadius:8, fontSize:12.5, color:B.orange, borderColor:"#FDDECE", background:B.orangeLight, display:"flex", alignItems:"center", justifyContent:"center", gap:6, opacity:drafting?0.6:1 }}>
+                <Sparkles size={14} /> {drafting ? "Drafting…" : "Draft reply with AI"}
+              </button>
+            )}
             {commentType==="reply" && (
               <div style={{ fontSize:11, marginBottom:8, padding:"6px 10px", borderRadius:8, background: ticket.contact?.includes("@") ? B.greenBg : B.amberBg, color: ticket.contact?.includes("@") ? B.greenText : B.amberText, fontWeight:600 }}>
                 {ticket.contact?.includes("@")
@@ -999,7 +1037,10 @@ export default function App() {
   const [agent, setAgent]     = useState(null);
   const [tickets, setTickets] = useState([]);
   const [team, setTeam]       = useState([]);
-  const [page, setPage]       = useState("public");
+  const [page, setPage]       = useState(
+    typeof window !== "undefined" && ["/agent","/login"].includes(window.location.pathname)
+      ? "login" : "public"
+  );
 
   // ── Auth listener — auto-redirect on refresh if already logged in
   useEffect(() => {
@@ -1048,7 +1089,7 @@ export default function App() {
       } else {
         setAgent(null);
         setUser(null);
-        setPage("public");
+        setPage(["/agent","/login"].includes(window.location.pathname) ? "login" : "public");
       }
     });
     return unsub;
@@ -1224,13 +1265,6 @@ export default function App() {
 
   return (
     <div style={{ fontFamily:"'DM Sans',system-ui,sans-serif" }}>
-      {/* Demo switcher — remove before handing off to church */}
-      {page !== "login" && (
-        <div style={{ position:"fixed", bottom:16, right:16, zIndex:200, display:"flex", gap:8 }}>
-          <button style={{ ...BTN.ghost, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.12)" }} onClick={()=>setPage("public")}><User size={13} /> User</button>
-          <button style={{ ...BTN.orangeSolid, fontSize:11, padding:"5px 12px", borderRadius:20, boxShadow:"0 2px 10px rgba(0,0,0,0.15)" }} onClick={()=>setPage("login")}><Lock size={13} /> Agent</button>
-        </div>
-      )}
       {page === "public" && <PublicForm onSubmit={handleSubmit} />}
       {page === "login"  && <GoogleLogin onLogin={handleLogin} />}
     </div>

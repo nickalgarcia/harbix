@@ -73,14 +73,26 @@ service cloud.firestore {
 
     // ── Inventory ───────────────────────────────────────────
     match /inventory/{assetId} {
-      // Public read + update keeps the QR checkout/check-in flow working
-      // for volunteers who aren't signed in. Tightening this would require
-      // moving checkout to a serverless endpoint — noted as future work.
-      allow read:   if true;
-      allow update: if true;
+      allow read: if true;
+
+      // Listed team members can edit any asset field (name, serial, notes, etc.)
+      // Anonymous volunteers (QR checkout/return) can only touch the four
+      // checkout-related fields — everything else requires a team login.
+      allow update: if isAdmin()
+        || isListed()
+        || request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'checkedOutTo', 'lastReturnedAt', 'lastReturnedBy']);
 
       // Adding assets requires a listed team member; deleting is admin-only
       allow create: if isListed();
+      allow delete: if isAdmin();
+    }
+
+    // Checkout history sub-collection — written by the QR flow (no auth needed),
+    // readable by any team member, deletable by admins only.
+    match /inventory/{assetId}/history/{historyId} {
+      allow create: if true;
+      allow read:   if isListed();
       allow delete: if isAdmin();
     }
   }

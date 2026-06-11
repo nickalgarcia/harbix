@@ -1,16 +1,16 @@
 import { useState, useRef, useEffect } from "react";
 import {
-  signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged
+  signInWithPopup, signOut, onAuthStateChanged
 } from "firebase/auth";
 import {
-  collection, addDoc, updateDoc, doc,
-  onSnapshot, query, orderBy, serverTimestamp, getDocs
+  collection, addDoc, updateDoc, deleteDoc, doc, getDoc,
+  onSnapshot, query, where, orderBy, serverTimestamp, getDocs
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import {
   MapPin, Camera, MessageCircle, CalendarClock, Mail, Clock,
   User, Lock, Package, LayoutGrid, List, Inbox, Sparkles,
-  ChevronLeft, Check
+  ChevronLeft, Check, Eye, Trash2
 } from "lucide-react";
 import { auth, db, storage, googleProvider } from "./firebase";
 import { B, BTN, INP, HarbixLogo, Chip, Avatar } from "./theme";
@@ -266,64 +266,29 @@ function PublicForm({ onSubmit }) {
 }
 
 // ── Google Login ──────────────────────────────────────────────
-// Safari (desktop + iOS) blocks cross-origin popup postMessage during MFA flows.
-// Detect Safari by checking for "safari" in UA but not "chrome" or "android".
-const isSafariBrowser = typeof navigator !== "undefined" &&
-  /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-
-function buildAgent(user) {
-  return {
-    id:     user.uid,
-    name:   user.displayName,
-    email:  user.email,
-    avatar: (user.displayName || "??").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(),
-    photo:  user.photoURL,
-  };
-}
-
 function GoogleLogin({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr]         = useState("");
 
-  // On Safari, signInWithRedirect was used — pick up the result after the redirect lands.
-  useEffect(() => {
-    if (!isSafariBrowser) return;
-    setLoading(true);
-    getRedirectResult(auth)
-      .then((result) => {
-        if (!result) { setLoading(false); return; }
-        const { email } = result.user;
-        if (!email.endsWith("@godchasers.church")) {
-          signOut(auth);
-          setErr("Access restricted to @godchasers.church accounts only.");
-          setLoading(false);
-          return;
-        }
-        onLogin(buildAgent(result.user));
-      })
-      .catch(() => {
-        setErr("Sign-in failed. Please try again.");
-        setLoading(false);
-      });
-  }, []);
-
   const handleGoogleLogin = async () => {
     setLoading(true); setErr("");
     try {
-      if (isSafariBrowser) {
-        // Redirect flow: browser navigates away; no further code runs here.
-        await signInWithRedirect(auth, googleProvider);
-        return;
-      }
       const result = await signInWithPopup(auth, googleProvider);
-      const { email } = result.user;
+      const email  = result.user.email;
       if (!email.endsWith("@godchasers.church")) {
         await signOut(auth);
         setErr("Access restricted to @godchasers.church accounts only.");
         setLoading(false);
         return;
       }
-      onLogin(buildAgent(result.user));
+      const agent = {
+        id:     result.user.uid,
+        name:   result.user.displayName,
+        email,
+        avatar: result.user.displayName.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(),
+        photo:  result.user.photoURL,
+      };
+      onLogin(agent);
     } catch (e) {
       setErr("Sign-in failed. Please try again.");
     }
@@ -359,7 +324,7 @@ function GoogleLogin({ onLogin }) {
 }
 
 // ── Ticket Card ───────────────────────────────────────────────
-function TicketCard({ ticket, agent, onClaim, onUnclaim, onClick }) {
+function TicketCard({ ticket, agent, canAct=true, onClaim, onUnclaim, onClick }) {
   const isMine      = ticket.claimedBy?.id === agent?.id;
   const isUnclaimed = !ticket.claimedBy;
   return (
@@ -394,7 +359,7 @@ function TicketCard({ ticket, agent, onClaim, onUnclaim, onClick }) {
       </div>
       {ticket.status !== "closed" && (
         <div style={{ borderTop:`1px solid ${B.border}`, padding:"10px 14px", background:B.offWhite, display:"flex", gap:8 }}>
-          {isUnclaimed && ticket.status==="waiting" && (
+          {canAct && isUnclaimed && ticket.status==="waiting" && (
             <button onClick={e=>{e.stopPropagation();onClaim(ticket.id);}} style={{ ...BTN.orangeSolid, flex:1, fontSize:13, padding:"9px 0", borderRadius:10 }}>» Claim Ticket</button>
           )}
           {isMine && ticket.status==="on-it" && (
@@ -415,7 +380,7 @@ function TicketCard({ ticket, agent, onClaim, onUnclaim, onClick }) {
   );
 }
 
-function TicketRow({ ticket, agent, onClaim, onUnclaim, onClick }) {
+function TicketRow({ ticket, agent, canAct=true, onClaim, onUnclaim, onClick }) {
   const isMine      = ticket.claimedBy?.id === agent?.id;
   const isUnclaimed = !ticket.claimedBy;
   return (
@@ -431,7 +396,7 @@ function TicketRow({ ticket, agent, onClaim, onUnclaim, onClick }) {
       </div>
       <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
         <StatusBadge status={ticket.status} />
-        {isUnclaimed && ticket.status==="waiting" && (
+        {canAct && isUnclaimed && ticket.status==="waiting" && (
           <button onClick={e=>{e.stopPropagation();onClaim(ticket.id);}} style={{ ...BTN.orangeSolid, fontSize:12, padding:"6px 12px", borderRadius:8 }}>Claim</button>
         )}
         {isMine && (
@@ -466,7 +431,7 @@ function DeptBadge({ department }) {
 }
 
 // ── Ticket Detail ─────────────────────────────────────────────
-function TicketDetail({ ticket, agent, team, onUpdate, onBack }) {
+function TicketDetail({ ticket, agent, team, onUpdate, readOnly=false, isAdmin=false, onDelete, onBack }) {
   const [comment, setComment]         = useState("");
   const [commentType, setCommentType] = useState("internal");
   const [lightbox, setLightbox]       = useState(false);
@@ -593,6 +558,12 @@ function TicketDetail({ ticket, agent, team, onUpdate, onBack }) {
           )}
         </div>
 
+        {readOnly && (
+          <div style={{ display:"flex", alignItems:"center", gap:8, background:B.cream, border:`1px solid ${B.border}`, borderRadius:12, padding:"10px 14px", marginBottom:14, fontSize:12.5, color:B.textSub, fontWeight:600 }}>
+            <Eye size={14} /> View-only — you can see this ticket, but editing it is reserved for that department's team.
+          </div>
+        )}
+
         {/* AI suggested first step */}
         {ticket.ai?.firstStep && (
           <div style={{ background:B.orangeLight, border:"1.5px solid #FDDECE", borderRadius:16, padding:"16px 20px", marginBottom:14 }}>
@@ -607,6 +578,7 @@ function TicketDetail({ ticket, agent, team, onUpdate, onBack }) {
         )}
 
         {/* Department + Priority + Due Date */}
+        {!readOnly && (
         <div style={{ background:B.white, borderRadius:16, padding:"20px", marginBottom:14, border:`1px solid ${B.border}` }}>
           <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:14 }}>Department</div>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:20 }}>
@@ -630,8 +602,10 @@ function TicketDetail({ ticket, agent, team, onUpdate, onBack }) {
               style={{ ...INP(false), fontSize:13 }} />
           </div>
         </div>
+        )}
 
         {/* Status & Assignment */}
+        {!readOnly && (
         <div style={{ background:B.white, borderRadius:16, padding:"20px", marginBottom:14, border:`1px solid ${B.border}` }}>
           <div style={{ fontSize:11, fontWeight:700, color:B.muted, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:14 }}>Status</div>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:20 }}>
@@ -679,6 +653,7 @@ function TicketDetail({ ticket, agent, team, onUpdate, onBack }) {
             <button onClick={()=>update({claimedBy:agent,status:"on-it"},"Claimed ticket")} style={{ ...BTN.orangeSolid, width:"100%", padding:"12px 0", borderRadius:10, fontSize:14 }}>» Claim This Ticket</button>
           )}
         </div>
+        )}
 
         {/* Activity Log */}
         {ticket.activity?.length > 0 && (
@@ -720,6 +695,7 @@ function TicketDetail({ ticket, agent, team, onUpdate, onBack }) {
               </div>
             ))}
           </div>
+          {!readOnly && (
           <div style={{ borderTop:`1px solid ${B.border}`, paddingTop:16 }}>
             <div style={{ display:"flex", gap:6, marginBottom:10 }}>
               {[["internal","Internal note"],["reply","Reply to submitter"]].map(([t,label])=>(
@@ -740,7 +716,17 @@ function TicketDetail({ ticket, agent, team, onUpdate, onBack }) {
               {saving?"Saving…":"Add Comment"}
             </button>
           </div>
+          )}
         </div>
+
+        {/* Admin-only: permanent delete for spam / test tickets */}
+        {isAdmin && onDelete && (
+          <button
+            onClick={()=>{ if (window.confirm("Permanently delete this ticket? This cannot be undone.")) onDelete(ticket.id); }}
+            style={{ ...BTN.ghost, width:"100%", marginTop:14, padding:"12px 0", borderRadius:10, color:B.red, borderColor:B.redBg, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+            <Trash2 size={15} /> Delete Ticket
+          </button>
+        )}
       </div>
     </div>
   );
@@ -826,7 +812,19 @@ function NewTicketModal({ agent, onClose, onSubmit }) {
 }
 
 // ── Agent Dashboard ───────────────────────────────────────────
-function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInventory }) {
+function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onDelete, onLogout, onInventory }) {
+  const isAdmin   = agent.role === "admin";
+  const access    = agent.access || {};
+  const myDepts   = Object.keys(access);                       // departments I can see
+  const editDepts = myDepts.filter(d => access[d] === "edit"); // departments I can work
+  const canEdit   = t => isAdmin || access[t?.department] === "edit";
+  const canCreate = isAdmin || editDepts.length > 0;
+  const roleLabel = isAdmin
+    ? "Admin"
+    : editDepts.length > 0
+      ? editDepts.map(d=>DEPARTMENT[d]?.label||d).join(" + ") + " team"
+      : "View only";
+
   const [tab, setTab]           = useState("all");
   const [deptFilter, setDeptFilter] = useState("all");
   const [view, setView]         = useState("card");
@@ -865,13 +863,14 @@ function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInv
     return matchTab && matchDept && (!search || t.name.toLowerCase().includes(s) || t.issue.toLowerCase().includes(s) || t.location.toLowerCase().includes(s));
   });
 
-  const claim   = id => onUpdate(id,{claimedBy:agent,status:"on-it"});
-  const unclaim = id => onUpdate(id,{claimedBy:null,status:"waiting"});
+  const claim   = id => { const t = tickets.find(x=>x.id===id); if (canEdit(t)) onUpdate(id,{claimedBy:agent,status:"on-it"}); };
+  const unclaim = id => { const t = tickets.find(x=>x.id===id); if (canEdit(t)) onUpdate(id,{claimedBy:null,status:"waiting"}); };
 
   if (selected) {
     const live = tickets.find(t=>t.id===selected);
     if (!live) { setSelected(null); return null; }
-    return <TicketDetail ticket={live} agent={agent} team={team} onUpdate={onUpdate} onBack={()=>setSelected(null)} />;
+    return <TicketDetail ticket={live} agent={agent} team={team} onUpdate={onUpdate} readOnly={!canEdit(live)} isAdmin={isAdmin}
+      onDelete={async (id)=>{ await onDelete(id); setSelected(null); }} onBack={()=>setSelected(null)} />;
   }
 
   return (
@@ -879,9 +878,14 @@ function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInv
       {showNew && <NewTicketModal agent={agent} onClose={()=>setShowNew(false)} onSubmit={onAdd} />}
       <div style={{ background:B.navy, padding:"0 16px", position:"sticky", top:0, zIndex:10 }}>
         <div className="hx-shell" style={{ height:54, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-        <HarbixLogo dark size="sm" />
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <button style={{ ...BTN.orangeSolid, fontSize:13, padding:"7px 14px", borderRadius:8 }} onClick={()=>setShowNew(true)}>+ New</button>
+          <HarbixLogo dark size="sm" />
+          <span style={{ fontSize:10, fontWeight:700, letterSpacing:"0.05em", textTransform:"uppercase", padding:"3px 9px", borderRadius:20, background:"rgba(255,255,255,0.1)", color:"rgba(255,255,255,0.65)", display:"inline-flex", alignItems:"center", gap:4, whiteSpace:"nowrap" }}>
+            {!isAdmin && editDepts.length===0 && <Eye size={11} />}{roleLabel}
+          </span>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          {canCreate && <button style={{ ...BTN.orangeSolid, fontSize:13, padding:"7px 14px", borderRadius:8 }} onClick={()=>setShowNew(true)}>+ New</button>}
           <button style={{ ...BTN.ghost, fontSize:13, padding:"7px 14px", borderRadius:8, background:"rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.7)", border:"1.5px solid rgba(255,255,255,0.15)" }} onClick={onInventory}><Package size={15} /> Inventory</button>
           <div style={{ display:"flex", alignItems:"center", gap:7, cursor:"pointer" }} onClick={onLogout}>
             {agent.photo
@@ -905,26 +909,40 @@ function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInv
       </div>
       <div style={{ background:B.white, borderBottom:`1px solid ${B.border}`, padding:"0 16px" }}>
       <div className="hx-shell" style={{ display:"flex", overflowX:"auto" }}>
-        {[["all","Open"],["waiting","Waiting"],["mine","My Queue"],["assigned","Assigned to Me"],["critical","Critical"],["done","Done"]].map(([key,label])=>(
+        {[["all","Open"],["waiting","Waiting"],["mine","My Queue"],["assigned","Assigned to Me"],["critical","Critical"],["done","Done"]]
+          .filter(([key])=>!(!canCreate&&(key==="mine"||key==="assigned")))
+          .map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)} style={{ background:"none", border:"none", borderBottom:`2.5px solid ${tab===key?B.orange:"transparent"}`, padding:"13px 14px", fontSize:13, fontWeight:tab===key?700:500, color:tab===key?B.orange:B.textSub, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
             {label} ({counts[key]||0})
           </button>
         ))}
       </div>
       </div>
+      {!isAdmin && myDepts.length === 1 && (
+        <div style={{ padding:"12px 16px 0" }}>
+          <div className="hx-shell" style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <span style={{ fontSize:12, color:B.muted, fontWeight:600 }}>Your queue:</span>
+            <DeptBadge department={myDepts[0]} />
+            {access[myDepts[0]]==="view" && <span style={{ fontSize:11, color:B.muted }}>(view only)</span>}
+          </div>
+        </div>
+      )}
+      {(isAdmin || myDepts.length > 1) && (
       <div style={{ padding:"12px 16px 0" }}>
       <div className="hx-shell" style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
         <button onClick={()=>setDeptFilter("all")} style={{ padding:"6px 13px", borderRadius:20, border:`1.5px solid ${deptFilter==="all"?B.navy:B.border}`, background:deptFilter==="all"?B.navy:B.white, color:deptFilter==="all"?B.white:B.textSub, fontSize:12, fontWeight:deptFilter==="all"?700:500, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
           All Depts
         </button>
-        {Object.entries(DEPARTMENT).map(([key,d])=>(
+        {Object.entries(DEPARTMENT).filter(([key])=>isAdmin||myDepts.includes(key)).map(([key,d])=>(
           <button key={key} onClick={()=>setDeptFilter(deptFilter===key?"all":key)} style={{ display:"inline-flex", alignItems:"center", gap:5, padding:"6px 13px", borderRadius:20, border:`1.5px solid ${deptFilter===key?d.dot:B.border}`, background:deptFilter===key?d.bg:B.white, color:deptFilter===key?d.text:B.textSub, fontSize:12, fontWeight:deptFilter===key?700:500, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" }}>
             <span style={{ width:6, height:6, borderRadius:"50%", background:d.dot, flexShrink:0 }} />
             {d.label}{deptCounts[key]>0&&` (${deptCounts[key]})`}
+            {!isAdmin&&access[key]==="view"&&<Eye size={11} style={{ opacity:0.6 }} />}
           </button>
         ))}
       </div>
       </div>
+      )}
       <div style={{ padding:"12px 16px" }}>
       <div className="hx-shell" style={{ display:"flex", gap:8 }}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search tickets…" style={{ flex:1, padding:"10px 14px", borderRadius:10, border:`1.5px solid ${B.border}`, fontSize:13, color:B.text, outline:"none", fontFamily:"inherit", background:B.white, WebkitAppearance:"none" }} />
@@ -944,11 +962,11 @@ function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInv
           </div>
         ) : view==="card" ? (
           <div className="hx-grid hx-fade">
-            {filtered.map(t=><TicketCard key={t.id} ticket={t} agent={agent} onClaim={claim} onUnclaim={unclaim} onClick={()=>setSelected(t.id)} />)}
+            {filtered.map(t=><TicketCard key={t.id} ticket={t} agent={agent} canAct={canEdit(t)} onClaim={claim} onUnclaim={unclaim} onClick={()=>setSelected(t.id)} />)}
           </div>
         ) : (
           <div className="hx-fade" style={{ display:"flex", flexDirection:"column", gap:8 }}>
-            {filtered.map(t=><TicketRow key={t.id} ticket={t} agent={agent} onClaim={claim} onUnclaim={unclaim} onClick={()=>setSelected(t.id)} />)}
+            {filtered.map(t=><TicketRow key={t.id} ticket={t} agent={agent} canAct={canEdit(t)} onClaim={claim} onUnclaim={unclaim} onClick={()=>setSelected(t.id)} />)}
           </div>
         )}
       </div>
@@ -958,6 +976,22 @@ function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onLogout, onInv
 }
 
 // ── Button tokens imported from src/theme.js ──────────────────
+
+// ── Not-set-up screen — signed in but not in the agents directory ──
+function NotSetUp({ agent, onLogout }) {
+  return (
+    <div style={{ minHeight:"100vh", background:B.offWhite, display:"flex", alignItems:"center", justifyContent:"center", padding:24, fontFamily:"'DM Sans',system-ui,sans-serif" }}>
+      <div style={{ background:B.white, border:`1px solid ${B.border}`, borderRadius:20, padding:"36px 32px", maxWidth:400, textAlign:"center" }} className="hx-card">
+        <div style={{ display:"flex", justifyContent:"center", marginBottom:18 }}><HarbixLogo size="md" /></div>
+        <h2 style={{ margin:"0 0 10px", fontSize:19, fontWeight:800, color:B.text, letterSpacing:"-0.02em" }}>Almost there, {agent.name.split(" ")[0]}</h2>
+        <p style={{ margin:"0 0 24px", fontSize:14, color:B.textSub, lineHeight:1.65 }}>
+          Your Google account is verified, but it hasn't been added to the Harbix team directory yet. Ask an admin to add <strong style={{ color:B.text }}>{agent.email}</strong> and you'll be all set.
+        </p>
+        <button onClick={onLogout} style={{ ...BTN.ghost, width:"100%", padding:"12px 0", borderRadius:10 }}>Sign out</button>
+      </div>
+    </div>
+  );
+}
 
 // ── Root App — real Firebase wired up ────────────────────────
 export default function App() {
@@ -969,14 +1003,43 @@ export default function App() {
 
   // ── Auth listener — auto-redirect on refresh if already logged in
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser && firebaseUser.email?.endsWith("@godchasers.church")) {
+        // Permissions come from the agents directory (doc ID = email).
+        // role: "admin" sees + does everything. Everyone else has an
+        // `access` map of department -> "edit" | "view", e.g.
+        // { av: "view", tech: "view", facilities: "edit" }.
+        // No doc = "unlisted" → friendly not-set-up screen, and Firestore
+        // rules block their reads anyway.
+        let role = "unlisted", access = {};
+        try {
+          const snap = await getDoc(doc(db, "agents", firebaseUser.email));
+          if (snap.exists()) {
+            const d = snap.data();
+            if (d.role === "admin") {
+              role = "admin";
+            } else {
+              role = "member";
+              if (d.access && typeof d.access === "object") {
+                access = d.access;
+              } else if (d.role === "viewer") {
+                access = { av:"view", tech:"view", facilities:"view" }; // legacy shape
+              } else if (d.department) {
+                access = { [d.department]:"edit" }; // legacy shape
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Agent directory lookup failed:", e);
+        }
         const a = {
           id:     firebaseUser.uid,
           name:   firebaseUser.displayName || firebaseUser.email,
           email:  firebaseUser.email,
           avatar: (firebaseUser.displayName || "??").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(),
           photo:  firebaseUser.photoURL,
+          role,
+          access,
         };
         setAgent(a);
         setUser(firebaseUser);
@@ -992,18 +1055,31 @@ export default function App() {
   }, []);
 
   // ── Firestore real-time listener (only when agent is logged in)
+  // Admins stream every ticket; members stream ONLY the departments in
+  // their access map (security rules aren't filters — the query itself
+  // must match what the agent is allowed to read, or it errors out).
   useEffect(() => {
-    if (!agent) return;
-    const q = query(collection(db, "tickets"), orderBy("createdAt", "desc"));
+    if (!agent || agent.role === "unlisted") { setTickets([]); return; }
+    let q;
+    if (agent.role === "admin") {
+      q = query(collection(db, "tickets"), orderBy("createdAt", "desc"));
+    } else {
+      const depts = Object.keys(agent.access || {});
+      if (depts.length === 0) { setTickets([]); return; }
+      // No orderBy here — avoids needing a composite index; sorted client-side
+      q = query(collection(db, "tickets"), where("department", "in", depts));
+    }
     const unsub = onSnapshot(q, (snap) => {
-      setTickets(snap.docs.map(d => ({ id:d.id, ...d.data() })));
-    });
+      const rows = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+      rows.sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
+      setTickets(rows);
+    }, (err) => console.error("Tickets listener error:", err));
     return unsub;
   }, [agent]);
 
   // ── Fetch agent directory from Firestore (not bundled in client JS)
   useEffect(() => {
-    if (!agent) { setTeam([]); return; }
+    if (!agent || agent.role === "unlisted") { setTeam([]); return; }
     getDocs(collection(db, "agents")).then(snap => {
       setTeam(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
@@ -1093,7 +1169,9 @@ export default function App() {
       issue:     form.issue    || "",
       photoURL,
       status:     status || "waiting",
-      department: "unsorted",
+      department: agent?.role === "admin"
+        ? "unsorted"
+        : (Object.keys(agent?.access||{}).find(d=>agent.access[d]==="edit") || "unsorted"),
       claimedBy:  claimedBy || null,
       comments:  [],
       createdAt: serverTimestamp(),
@@ -1102,8 +1180,14 @@ export default function App() {
     await addDoc(collection(db, "tickets"), ticketData);
   };
 
-  const handleLogin  = (a) => { setAgent(a); setPage("agent"); };
+  // Auth listener owns setting `agent` (with role) — login just navigates
+  const handleLogin  = () => setPage("agent");
   const handleLogout = async () => { await signOut(auth); setAgent(null); setPage("public"); };
+
+  // Admin-only: permanently delete a ticket (spam/test cleanup)
+  const handleDelete = async (id) => {
+    await deleteDoc(doc(db, "tickets", id));
+  };
 
   // ── QR scan intercept — render inventory checkout directly, no auth needed
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/inventory/asset/")) {
@@ -1114,7 +1198,7 @@ export default function App() {
   if (user === undefined) return (
     <div style={{ minHeight:"100vh", background:`linear-gradient(160deg,${B.deep} 0%,${B.navy} 100%)`, display:"flex", alignItems:"center", justifyContent:"center" }}>
       <div style={{ textAlign:"center" }}>
-        <div style={{ fontSize:32, fontWeight:900, color:B.orange, fontFamily:"Georgia,serif", fontStyle:"italic", marginBottom:12 }}>»</div>
+        <div style={{ display:"flex", justifyContent:"center", marginBottom:12 }}><HarbixLogo dark size="lg" /></div>
         <div style={{ fontSize:14, color:"rgba(255,255,255,0.4)", fontFamily:"'DM Sans',sans-serif" }}>Loading…</div>
       </div>
     </div>
@@ -1122,6 +1206,7 @@ export default function App() {
 
   // If agent is logged in, show dashboard or inventory depending on page
   if (agent) {
+    if (agent.role === "unlisted") return <NotSetUp agent={agent} onLogout={handleLogout} />;
     if (page === "inventory") return <HarbixInventory onBack={() => setPage("agent")} />;
     return (
       <AgentDashboard
@@ -1130,6 +1215,7 @@ export default function App() {
         team={team}
         onUpdate={handleUpdate}
         onAdd={handleAdd}
+        onDelete={handleDelete}
         onLogout={handleLogout}
         onInventory={() => setPage("inventory")}
       />

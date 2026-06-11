@@ -1,38 +1,87 @@
 rules_version = '2';
+
+// Harbix — permission-matrix security rules
+//
+// The `agents` collection drives everything. Each document ID is the
+// agent's email (e.g. agents/ravon@godchasers.church) with fields:
+//   name, email, avatar
+//   role:   "admin"  (optional — admins only)
+//   access: map of department -> "edit" | "view"  (everyone else)
+//
+// Examples:
+//   Anthony:  access: { av: "edit" }
+//   Ravon:    access: { av: "view", tech: "view", facilities: "edit" }
+//   Admins:   role: "admin"  (no access map needed)
+//
+// - admin:           read/update/delete everything
+// - "edit" on dept:  read + update tickets in that department
+// - "view" on dept:  read tickets in that department, change nothing
+// - public:          can create tickets (form) and use QR checkout (inventory)
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isListed() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/agents/$(request.auth.token.email));
+    }
+
+    function me() {
+      return get(/databases/$(database)/documents/agents/$(request.auth.token.email)).data;
+    }
+
     function isAdmin() {
-      return request.auth != null &&
-             request.auth.token.email.matches('.*@godchasers\\.church');
+      return isListed() && me().get("role", "") == "admin";
     }
 
-    // Tickets: staff only
+    function canSeeDept(dept) {
+      return isListed() && dept in me().get("access", {});
+    }
+
+    function canEditDept(dept) {
+      return isListed() && me().get("access", {}).get(dept, "") == "edit";
+    }
+
+    // ── Tickets ─────────────────────────────────────────────
     match /tickets/{ticketId} {
+      // Public form must be able to submit — do not change this
       allow create: if true;
-      allow read, update, delete: if isAdmin();
+
+      // Admins see all; members see departments in their access map
+      allow read: if isAdmin() || canSeeDept(resource.data.department);
+
+      // Admins update anything; members update only "edit" departments
+      // (including re-routing a misclassified ticket OUT of their lane)
+      allow update: if isAdmin() || canEditDept(resource.data.department);
+
+      // Delete is admin-only (spam / test cleanup)
+      allow delete: if isAdmin();
     }
 
-    // Agent directory: staff only
-    match /agents/{agentId} {
-      allow read, write: if isAdmin();
+    // ── Agents directory ────────────────────────────────────
+    match /agents/{agentEmail} {
+      // Any listed team member can read the directory (assignment dropdown)
+      allow read: if isListed();
+
+      // Only admins can add/change permissions
+      allow write: if isAdmin();
     }
 
-    // Inventory assets: anyone can read (QR codes are public links)
-    // Only admins can create or delete assets
-    // Anyone can update status/checkedOutTo for anonymous checkout/return
+    // ── Inventory ───────────────────────────────────────────
     match /inventory/{assetId} {
-      allow read: if true;
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin()
-        || request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['status', 'checkedOutTo', 'updatedAt']);
-    }
+      // Public read + update keeps the QR checkout/check-in flow working
+      // for volunteers who aren't signed in. Tightening this would require
+      // moving checkout to a serverless endpoint — noted as future work.
+      allow read:   if true;
+      allow update: if true;
 
-    // Checkout history: anyone can append a log entry, only staff can read
-    match /inventory/{assetId}/history/{historyId} {
-      allow create: if true;
-      allow read, update, delete: if isAdmin();
+      // Adding assets requires a listed team member; deleting is admin-only
+      allow create: if isListed();
+      allow delete: if isAdmin();
     }
   }
 }

@@ -1218,7 +1218,17 @@ export default function App() {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
-    await addDoc(collection(db, "tickets"), ticketData);
+    const docRef = await addDoc(collection(db, "tickets"), ticketData);
+    // Notify the tech inbox — same as public form submissions (non-fatal if it fails)
+    try {
+      await fetch("/api/submit-ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...ticketData, firestoreId: docRef.id, createdAt: new Date().toISOString() }),
+      });
+    } catch (e) {
+      console.error("Ticket notification failed:", e);
+    }
   };
 
   // Auth listener owns setting `agent` (with role) — login just navigates

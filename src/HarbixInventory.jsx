@@ -182,7 +182,7 @@ async function sendCheckoutEmail(asset, checkoutData) {
 // ─── QR Generator ────────────────────────────────────────────────────────────
 async function generateQRDataURL(assetId) {
   const url = `${BASE_URL}/inventory/asset/${assetId}`;
-  return QRCode.toDataURL(url, { width: 256, margin: 2, color: { dark: "#F2F0EC", light: "#ffffff" } });
+  return QRCode.toDataURL(url, { width: 512, margin: 4, errorCorrectionLevel: "H", color: { dark: "#000000", light: "#FFFFFF" } });
 }
 
 // ─── Generate asset ID ────────────────────────────────────────────────────────

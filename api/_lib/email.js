@@ -116,7 +116,7 @@ export function newTicketEmail({ name, location, contact, issue, photoURL, ticke
       ${row("Ticket ID", `<span style="font-family:monospace;font-size:12px;">${esc(ticketId || "")}</span>`)}
     </table>
     <p style="margin:20px 0 0;">
-      <a href="https://harbix.vercel.app" style="background:${BRAND.orange};color:#ffffff;text-decoration:none;padding:10px 22px;border-radius:8px;font-size:13.5px;font-weight:600;display:inline-block;">Open Harbix</a>
+      <a href="${ticketId ? `https://harbix.vercel.app/ticket/${encodeURIComponent(ticketId)}` : "https://harbix.vercel.app"}" style="background:${BRAND.orange};color:#ffffff;text-decoration:none;padding:10px 22px;border-radius:8px;font-size:13.5px;font-weight:600;display:inline-block;">View Ticket</a>
     </p>
   `);
 }
@@ -139,7 +139,7 @@ export function agentAssignedEmail({ agentName, assignedBy, submitterName, locat
       ${row("Ticket ID", `<span style="font-family:monospace;font-size:12px;">${esc(ticketId || "")}</span>`)}
     </table>
     <p style="margin:20px 0 0;">
-      <a href="https://harbix.vercel.app" style="background:${BRAND.orange};color:#ffffff;text-decoration:none;padding:10px 22px;border-radius:8px;font-size:13.5px;font-weight:600;display:inline-block;">View in Harbix</a>
+      <a href="${ticketId ? `https://harbix.vercel.app/ticket/${encodeURIComponent(ticketId)}` : "https://harbix.vercel.app"}" style="background:${BRAND.orange};color:#ffffff;text-decoration:none;padding:10px 22px;border-radius:8px;font-size:13.5px;font-weight:600;display:inline-block;">View Ticket</a>
     </p>
   `);
 }

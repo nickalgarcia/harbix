@@ -850,7 +850,7 @@ function NewTicketModal({ agent, onClose, onSubmit }) {
 }
 
 // ── Agent Dashboard ───────────────────────────────────────────
-function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onDelete, onLogout, onInventory }) {
+function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onDelete, onLogout, onInventory, initialTicketId, onTicketLinkOpened }) {
   const isAdmin   = agent.role === "admin";
   const access    = agent.access || {};
   const myDepts   = Object.keys(access);                       // departments I can see
@@ -870,6 +870,16 @@ function AgentDashboard({ agent, tickets, team, onUpdate, onAdd, onDelete, onLog
   const [showNew, setShowNew]   = useState(false);
   const [search, setSearch]     = useState("");
   const [toast, setToast]       = useState(null);
+
+  // ── Open a ticket deep-linked from an email notification (/ticket/{id})
+  useEffect(() => {
+    if (!initialTicketId || !tickets.length) return;
+    if (tickets.some(t => t.id === initialTicketId)) {
+      setSelected(initialTicketId);
+      window.history.replaceState({}, "", "/"); // clean the URL so refresh returns to dashboard
+      onTicketLinkOpened?.();
+    }
+  }, [initialTicketId, tickets]);
 
   const notifyRouted = (dept) => {
     setToast(dept);
@@ -1047,13 +1057,20 @@ function NotSetUp({ agent, onLogout }) {
 }
 
 // ── Root App — real Firebase wired up ────────────────────────
+// ── Email deep links: /ticket/{id} opens that ticket once the agent is logged in
+const DEEP_LINK_TICKET_ID =
+  typeof window !== "undefined" && window.location.pathname.startsWith("/ticket/")
+    ? decodeURIComponent(window.location.pathname.slice("/ticket/".length).split("/")[0])
+    : null;
+
 export default function App() {
   const [user, setUser]       = useState(undefined); // undefined = loading
   const [agent, setAgent]     = useState(null);
   const [tickets, setTickets] = useState([]);
   const [team, setTeam]       = useState([]);
+  const [pendingTicketId, setPendingTicketId] = useState(DEEP_LINK_TICKET_ID);
   const [page, setPage]       = useState(
-    typeof window !== "undefined" && ["/agent","/login"].includes(window.location.pathname)
+    typeof window !== "undefined" && (["/agent","/login"].includes(window.location.pathname) || DEEP_LINK_TICKET_ID)
       ? "login" : "public"
   );
 
@@ -1104,7 +1121,7 @@ export default function App() {
       } else {
         setAgent(null);
         setUser(null);
-        setPage(["/agent","/login"].includes(window.location.pathname) ? "login" : "public");
+        setPage((["/agent","/login"].includes(window.location.pathname) || DEEP_LINK_TICKET_ID) ? "login" : "public");
       }
     });
     return unsub;
@@ -1257,7 +1274,17 @@ export default function App() {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
-    await addDoc(collection(db, "tickets"), ticketData);
+    const docRef = await addDoc(collection(db, "tickets"), ticketData);
+    // Notify the tech inbox — same as public form submissions (non-fatal if it fails)
+    try {
+      await fetch("/api/submit-ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...ticketData, firestoreId: docRef.id, createdAt: new Date().toISOString() }),
+      });
+    } catch (e) {
+      console.error("Ticket notification failed:", e);
+    }
     return { department: triage.department };
   };
 
@@ -1299,6 +1326,8 @@ export default function App() {
         onDelete={handleDelete}
         onLogout={handleLogout}
         onInventory={() => setPage("inventory")}
+        initialTicketId={pendingTicketId}
+        onTicketLinkOpened={() => setPendingTicketId(null)}
       />
     );
   }

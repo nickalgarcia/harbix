@@ -1088,12 +1088,48 @@ export default function App() {
   );
 
   // ── Handle Google redirect result (Safari/iOS uses signInWithRedirect)
-  // onAuthStateChanged fires automatically after a successful redirect;
-  // this just catches and surfaces any redirect-flow errors.
+  // Safari doesn't reliably fire onAuthStateChanged after a cross-domain
+  // redirect, so we explicitly process the result here as a fallback.
   useEffect(() => {
-    getRedirectResult(auth).then(result => {
+    getRedirectResult(auth).then(async (result) => {
       if (!result) return;
-      // onAuthStateChanged will fire and handle the login state
+      const firebaseUser = result.user;
+      if (!firebaseUser?.email?.endsWith("@godchasers.church")) {
+        await signOut(auth);
+        return;
+      }
+      let role = "unlisted", access = {};
+      try {
+        const snap = await getDoc(doc(db, "agents", firebaseUser.email));
+        if (snap.exists()) {
+          const d = snap.data();
+          if (d.role === "admin") {
+            role = "admin";
+          } else {
+            role = "member";
+            if (d.access && typeof d.access === "object") {
+              access = d.access;
+            } else if (d.role === "viewer") {
+              access = { av:"view", tech:"view", facilities:"view" };
+            } else if (d.department) {
+              access = { [d.department]:"edit" };
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Agent lookup failed in redirect handler:", e);
+      }
+      setAgent({
+        id:     firebaseUser.uid,
+        name:   firebaseUser.displayName || firebaseUser.email,
+        email:  firebaseUser.email,
+        avatar: (firebaseUser.displayName || "??").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(),
+        photo:  firebaseUser.photoURL,
+        role,
+        access,
+      });
+      setUser(firebaseUser);
+      setPage("agent");
     }).catch(err => {
       console.error("Google redirect sign-in failed:", err);
     });

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import {
-  signInWithPopup, signOut, onAuthStateChanged
+  signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged
 } from "firebase/auth";
 import {
   collection, addDoc, updateDoc, deleteDoc, doc, getDoc,
@@ -265,6 +265,13 @@ function PublicForm({ onSubmit }) {
   );
 }
 
+// Safari (including iOS Safari) blocks popup-based OAuth — detect it so we
+// can fall back to the redirect flow, which navigates the whole page instead.
+function isSafariOrIOS() {
+  const ua = navigator.userAgent;
+  return /iPad|iPhone|iPod/.test(ua) || (/^((?!chrome|android).)*safari/i.test(ua));
+}
+
 // ── Google Login ──────────────────────────────────────────────
 function GoogleLogin({ onLogin }) {
   const [loading, setLoading] = useState(false);
@@ -273,6 +280,12 @@ function GoogleLogin({ onLogin }) {
   const handleGoogleLogin = async () => {
     setLoading(true); setErr("");
     try {
+      if (isSafariOrIOS()) {
+        // Redirect flow: page navigates to Google and back; onAuthStateChanged
+        // in App handles the result automatically after the redirect returns.
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
       const result = await signInWithPopup(auth, googleProvider);
       const email  = result.user.email;
       if (!email.endsWith("@godchasers.church")) {
@@ -1073,6 +1086,18 @@ export default function App() {
     typeof window !== "undefined" && (["/agent","/login"].includes(window.location.pathname) || DEEP_LINK_TICKET_ID)
       ? "login" : "public"
   );
+
+  // ── Handle Google redirect result (Safari/iOS uses signInWithRedirect)
+  // onAuthStateChanged fires automatically after a successful redirect;
+  // this just catches and surfaces any redirect-flow errors.
+  useEffect(() => {
+    getRedirectResult(auth).then(result => {
+      if (!result) return;
+      // onAuthStateChanged will fire and handle the login state
+    }).catch(err => {
+      console.error("Google redirect sign-in failed:", err);
+    });
+  }, []);
 
   // ── Auth listener — auto-redirect on refresh if already logged in
   useEffect(() => {

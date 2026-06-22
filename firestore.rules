@@ -48,8 +48,61 @@ service cloud.firestore {
 
     // ── Tickets ─────────────────────────────────────────────
     match /tickets/{ticketId} {
-      // Public form must be able to submit — do not change this
-      allow create: if true;
+      // ── Public create (anonymous) ────────────────────────
+      // Allows the public ticket form to submit while blocking direct-SDK
+      // attackers from injecting forged fields (fake status, comments, etc.)
+      // or writing multi-MB documents.
+      //
+      // Constraints:
+      //   • Required string fields must be present and within size bounds.
+      //   • Server-controlled fields (status, claimedBy, comments, activity)
+      //     are locked to their safe initial values.
+      //   • Privileged fields (role, assignedTo) must not be present.
+      //   • department / priority / ai / photoURL / timestamps are intentionally
+      //     unconstrained here — they are either validated outputs of the triage
+      //     endpoint or controlled Storage URLs.
+      allow create: if
+        // ── Required string fields, size-bounded ──────────────────────────
+        request.resource.data.name     is string
+          && request.resource.data.name.size()     <= 200
+        && request.resource.data.issue    is string
+          && request.resource.data.issue.size()    <= 3000
+        && request.resource.data.location is string
+          && request.resource.data.location.size() <= 300
+        // contact is optional; if present it must be a bounded string
+        && (!('contact' in request.resource.data)
+            || (request.resource.data.contact is string
+                && request.resource.data.contact.size() <= 300))
+        // ── Server-controlled fields locked to safe initial values ────────
+        && request.resource.data.status    == "waiting"
+        && request.resource.data.claimedBy == null
+        && request.resource.data.comments  is list
+          && request.resource.data.comments.size() == 0
+        // activity must be absent — it is appended via updateDoc only
+        && !('activity' in request.resource.data)
+        // ── No privileged fields ─────────────────────────────────────────
+        && !('role'       in request.resource.data)
+        && !('assignedTo' in request.resource.data);
+
+      // ── Agent create (authenticated listed member) ───────────
+      // Agents can create tickets from the dashboard with a non-default
+      // initial status (e.g. "on-it" when claiming immediately) and with
+      // claimedBy pre-set. Same comment/activity/role invariants apply.
+      allow create: if isListed()
+        && request.resource.data.name     is string
+          && request.resource.data.name.size()     <= 200
+        && request.resource.data.issue    is string
+          && request.resource.data.issue.size()    <= 3000
+        && request.resource.data.location is string
+          && request.resource.data.location.size() <= 300
+        && (!('contact' in request.resource.data)
+            || (request.resource.data.contact is string
+                && request.resource.data.contact.size() <= 300))
+        && request.resource.data.status in ["waiting", "on-it", "done", "closed"]
+        && request.resource.data.comments is list
+          && request.resource.data.comments.size() == 0
+        && !('activity' in request.resource.data)
+        && !('role' in request.resource.data);
 
       // Admins see all; members see departments in their access map
       allow read: if isAdmin() || canSeeDept(resource.data.department);

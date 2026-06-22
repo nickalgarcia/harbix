@@ -6,20 +6,7 @@
 // Unlike /api/triage (which the public form calls), this endpoint verifies the
 // caller's Firebase ID token — only signed-in @godchasers.church agents can use it.
 
-import { initializeApp, getApps, cert } from "firebase-admin/app";
-import { getAuth }                       from "firebase-admin/auth";
-
-function getAdminApp() {
-  if (!getApps().length) {
-    initializeApp({
-      credential: cert({
-        projectId:   process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey:  process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-      }),
-    });
-  }
-}
+import { verifyChurchAgent } from "./_lib/admin.js";
 
 const SYSTEM_PROMPT = `You draft replies from the GodChasers Church help desk to people who submitted support tickets. The agent will review and edit your draft before sending — you are writing a draft, not sending anything.
 
@@ -40,16 +27,10 @@ export default async function handler(req, res) {
 
   // ── Verify the caller is a signed-in church agent ─────────────
   try {
-    getAdminApp();
-    const token = (req.headers.authorization || "").replace("Bearer ", "");
-    if (!token) return res.status(401).json({ error: "Missing auth token" });
-    const decoded = await getAuth().verifyIdToken(token);
-    if (!decoded.email?.endsWith("@godchasers.church")) {
-      return res.status(403).json({ error: "Not authorized" });
-    }
+    await verifyChurchAgent(req);
   } catch (e) {
     console.error("Auth verification failed:", e.message);
-    return res.status(401).json({ error: "Invalid auth token" });
+    return res.status(e.status || 401).json({ error: e.message });
   }
 
   const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;

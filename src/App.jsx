@@ -471,17 +471,11 @@ function TicketDetail({ ticket, agent, team, onUpdate, readOnly=false, isAdmin=f
     // Notify submitter if done or closed and they have an email
     if ((newStatus === "done" || newStatus === "closed") && ticket.contact?.includes("@")) {
       try {
+        const token = await auth.currentUser.getIdToken();
         await fetch("/api/notify-submitter", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "resolved",
-            submitter_email: ticket.contact,
-            location: ticket.location,
-            issue: ticket.issue,
-            status: STATUS[newStatus]?.label,
-            ticket_id: ticket.id,
-          }),
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ ticket_id: ticket.id, type: "resolved" }),
         });
       } catch(e) { console.error("Resolved notification failed:", e); }
     }
@@ -494,20 +488,11 @@ function TicketDetail({ ticket, agent, team, onUpdate, readOnly=false, isAdmin=f
     );
     if (teamMember) {
       try {
+        const token = await auth.currentUser.getIdToken();
         await fetch("/api/notify-agent", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agent_email:     teamMember.email,
-            agent_name:      teamMember.name,
-            assigned_by:     agent.name,
-            submitter_name:  ticket.name,
-            location:        ticket.location,
-            issue:           ticket.issue,
-            priority:        ticket.priority || "normal",
-            due_date:        ticket.dueDate || "",
-            ticket_id:       ticket.id,
-          }),
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ ticket_id: ticket.id }),
         });
       } catch(e) { console.error("Assignment notification failed:", e); }
     }
@@ -525,18 +510,11 @@ function TicketDetail({ ticket, agent, team, onUpdate, readOnly=false, isAdmin=f
     // Notify submitter on reply
     if (commentType==="reply" && ticket.contact?.includes("@")) {
       try {
+        const token = await auth.currentUser.getIdToken();
         await fetch("/api/notify-submitter", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "reply",
-            submitter_email: ticket.contact,
-            location: ticket.location,
-            issue: ticket.issue,
-            agent_name: agent.name,
-            message: comment.trim(),
-            ticket_id: ticket.id,
-          }),
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ ticket_id: ticket.id, type: "reply" }),
         });
       } catch(e) { console.error("Reply notification failed:", e); }
     }

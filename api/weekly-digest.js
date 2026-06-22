@@ -3,23 +3,8 @@
 // Schedule is set in vercel.json (Mondays at 8am CT = "0 14 * * 1")
 // Migrated from EmailJS → Resend. Data logic unchanged; only the send section is new.
 
-import { initializeApp, getApps, cert } from "firebase-admin/app";
-import { getFirestore }                  from "firebase-admin/firestore";
+import { getAdminDb }                   from "./_lib/admin.js";
 import { sendEmail, weeklyDigestEmail }  from "./_lib/email.js";
-
-// ── Firebase Admin init (safe for multiple invocations) ───────────────────────
-function getAdminDb() {
-  if (!getApps().length) {
-    initializeApp({
-      credential: cert({
-        projectId:   process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey:  process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
-      }),
-    });
-  }
-  return getFirestore();
-}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function startOfWeek() {
@@ -45,14 +30,23 @@ function daysSince(date) {
 
 // ── Main handler ──────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
-  // Allow manual trigger via GET (for testing) or the cron runner
-  const isCron   = req.headers["x-vercel-cron"] === "1";
-  const isManual = req.method === "GET" || req.method === "POST";
-  if (!isCron && !isManual) return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "GET" && req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
-  // Optional secret to protect manual triggers
-  const secret = req.headers["x-digest-secret"] || req.query.secret;
-  if (process.env.DIGEST_SECRET && secret !== process.env.DIGEST_SECRET) {
+  // CRON_SECRET is required — fail closed if not set.
+  // Vercel automatically attaches "Authorization: Bearer <CRON_SECRET>" to
+  // cron invocations. For manual triggers, include the same header.
+  // Note: the old x-vercel-cron header is NOT used as an auth signal because
+  // any HTTP client can set it.
+  const expected = process.env.CRON_SECRET;
+  if (!expected) {
+    console.error("weekly-digest: CRON_SECRET env var not set — locked down until it is");
+    return res.status(503).json({ error: "Not configured" });
+  }
+  const authHeader = req.headers.authorization || "";
+  const provided   = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!provided || provided !== expected) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 

@@ -13,6 +13,53 @@ const FALLBACK = {
   confidence:  0,
 };
 
+// ── Rate limiting (Upstash Redis REST) ────────────────────────────────────────
+// 5 requests per IP per 60-second rolling window.
+// Fails open with a logged warning if the Upstash env vars are absent —
+// the function still works, rate limiting just won't be enforced until
+// UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are set in Vercel.
+const RATE_LIMIT  = 5;  // max requests per window per IP
+const RATE_WINDOW = 60; // window length in seconds
+
+async function checkRateLimit(ip) {
+  const url   = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) {
+    console.warn("triage: rate limiting not configured (UPSTASH_REDIS_REST_URL/TOKEN missing) — skipping");
+    return { limited: false };
+  }
+
+  let res;
+  try {
+    // Pipeline: INCR the counter, then (re)set its TTL
+    res = await fetch(`${url}/pipeline`, {
+      method:  "POST",
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body:    JSON.stringify([
+        ["INCR",   `triage:${ip}`],
+        ["EXPIRE", `triage:${ip}`, RATE_WINDOW],
+      ]),
+    });
+  } catch (err) {
+    console.warn("triage: Upstash request failed:", err.message, "— failing open");
+    return { limited: false };
+  }
+
+  if (!res.ok) {
+    console.warn(`triage: Upstash returned ${res.status} — failing open`);
+    return { limited: false };
+  }
+
+  const data  = await res.json();
+  const count = data?.[0]?.[1]; // pipeline response: [[error, result], ...]
+  if (typeof count !== "number") {
+    console.warn("triage: unexpected Upstash response — failing open");
+    return { limited: false };
+  }
+  return { limited: count > RATE_LIMIT };
+}
+
+// ── AI prompt ────────────────────────────────────────────────────────────────
 const SYSTEM_PROMPT = `You triage help desk tickets for GodChasers Church. Respond ONLY with a JSON object — no markdown, no backticks, no explanation.
 
 Classify the ticket into exactly one department:
@@ -39,10 +86,23 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  // ── Rate limiting ─────────────────────────────────────────────────────────
+  const clientIP = (req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "unknown";
+  let limited = false;
+  try {
+    ({ limited } = await checkRateLimit(clientIP));
+  } catch (err) {
+    console.warn("triage: rate-limit check threw:", err.message, "— failing open");
+  }
+  if (limited) {
+    return res.status(429).json({ error: "Too many requests — try again shortly" });
+  }
+
+  // ── Key check (fail soft — never block a ticket) ──────────────────────────
   const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
   if (!ANTHROPIC_API_KEY) {
     console.error("Missing ANTHROPIC_API_KEY");
-    return res.status(200).json(FALLBACK); // fail soft — never block a ticket
+    return res.status(200).json(FALLBACK);
   }
 
   const { issue, location, name } = req.body || {};
